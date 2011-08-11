@@ -707,6 +707,21 @@ if [ "$DEPLOY" != "NONE" ]; then
     echo "Deployment uses 'sudo' which will prompt you for your"
     echo "password. Do not run this script with 'sudo'."
     echo
+    # Create the boot script for sdcard
+    if [ ! -e $BUILDOUTPUT/boot_sd.scr ]; then
+        mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Logic PD Android SD Boot" -d device/logicpd/dm3730logic/boot_sd.cmd out/target/product/dm3730logic/boot_sd.scr
+        if [ -e out/target/product/dm3730logic/boot_sd.scr ]; then
+            cp out/target/product/dm3730logic/boot_sd.scr $BUILDOUTPUT/boot_sd.scr
+        fi
+    fi
+
+    if [ "$DEPLOY" != "X_LOAD" ]; then
+        findPartition $FAT32
+        mountPartition $PART /mnt/fat32
+
+	sudo cp $BUILDOUTPUT/boot_sd.scr /mnt/fat32/boot.scr 2>&1
+        sync; sudo umount /mnt/fat32
+    fi
 fi
 
 if [ "$DEPLOY" == "ALL" ] || [ "$DEPLOY" == "X_LOAD" ]; then
