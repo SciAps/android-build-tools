@@ -194,7 +194,7 @@ function buildXLoader
     echo -e "*****\nBuilding X-Loader\n*****"
     pushd $XLOADER_DIR > /dev/null 2>&1
     if [ ! -e include/config.mk ]; then
-	make dm3730logic_config > ${OUT} 2>&1
+	make $XLOADER_CONFIG > ${OUT} 2>&1
     fi
     
     # Erase existing binary
@@ -232,7 +232,7 @@ function buildUBoot
     pushd $UBOOT_DIR > /dev/null 2>&1
     # If U-boot has already been configured for build, skip else configure
     if [ ! -e include/config.mk ]; then
-	make dm3730logic_config > ${OUT} 2>&1
+	make $UBOOT_CONFIG > ${OUT} 2>&1
     fi
     
     # Erase existing binary
@@ -280,7 +280,7 @@ function buildKernel
 
     # Has the Kernel been configured?
     if [ ! -e .config ]; then
-	make ARCH=arm dm3730_logic_android_defconfig > ${OUT} 2>&1
+	make ARCH=arm $KERNEL_CONFIG > ${OUT} 2>&1
     fi
     
     # Erase existing binary
@@ -708,18 +708,24 @@ if [ "$DEPLOY" != "NONE" ]; then
     echo "password. Do not run this script with 'sudo'."
     echo
     # Create the boot script for sdcard
-    if [ ! -e $BUILDOUTPUT/boot_sd.scr ]; then
-        mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Logic PD Android SD Boot" -d device/logicpd/dm3730logic/boot_sd.cmd out/target/product/dm3730logic/boot_sd.scr > /dev/null 2>&1
-        if [ -e out/target/product/dm3730logic/boot_sd.scr ]; then
-            cp out/target/product/dm3730logic/boot_sd.scr $BUILDOUTPUT/boot_sd.scr
-        fi
+    mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Logic PD Android SD Boot" -d device/logicpd/dm3730logic/boot_sd.cmd out/target/product/dm3730logic/boot_sd.scr > mkimage.log 2>&1
+    RET=$?
+    if [ $RET -ne 0 ]; then
+	    echo "***"
+        echo "Unable to create the boot script:"
+        cat mkimage.log
+	    echo "***"
+        rm mkimage.log
+    fi
+    if [ -e out/target/product/dm3730logic/boot_sd.scr ]; then
+        cp out/target/product/dm3730logic/boot_sd.scr $BUILDOUTPUT/boot_sd.scr
     fi
 
     if [ "$DEPLOY" != "X_LOAD" ]; then
         findPartition $FAT32
         mountPartition $PART /mnt/fat32
 
-	sudo cp $BUILDOUTPUT/boot_sd.scr /mnt/fat32/boot.scr 2>&1
+        sudo cp $BUILDOUTPUT/boot_sd.scr /mnt/fat32/boot.scr 2>&1
         sync; sudo umount /mnt/fat32
     fi
 fi
