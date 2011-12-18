@@ -39,10 +39,10 @@ FORBIDDEN_DEVICES=(sda)
 # KERNEL_CONFIG="dm3730_logic_android_defconfig"
 # ANDROID_TARGET="dm3730logic"
 
-XLOADER_CONFIG="INVALID"
-UBOOT_CONFIG="INVALID"
-KERNEL_CONFIG="INVALID"
-ANDROID_TARGET="INVAILD"
+XLOADER_CONFIG="dm3730logic_config"
+UBOOT_CONFIG="dm3730logic_config"
+KERNEL_CONFIG="omap3logic_android_defconfig"
+ANDROID_TARGET="dm3730logic"
 
 # Is the script configured?
 # Set the value to "YES" once the values above are properly
@@ -396,6 +396,119 @@ function buildAndroid
 	
     fi
     popd > /dev/null 2>&1
+}
+
+############################
+#
+#
+#
+############################
+function buildYAFFS2Image
+{
+    if [ "$ANDROID_KERNEL_VERSION" == "NONE" ]; then
+	echo "+++++++++"
+	echo "ERROR: Android/Kernel version not set!"
+	echo "       Use '-V 1.6' or '-V 2.1' to build"
+	echo "+++++++++"
+	exit 3
+    fi
+
+    missing_image_component=0
+    # Check that the necessary parts are available
+    if [ ! -e out/target/product/$ANDROID_TARGET/system.img ]; then
+	echo out/target/product/$ANDROID_TARGET/system.img missing
+	missing_image_component=1
+    fi
+    if [ ! -e out/target/product/$ANDROID_TARGET/userdata.img ]; then
+	echo out/target/product/$ANDROID_TARGET/userdata.img missing
+	missing_image_component=1
+    fi
+    if [ ! -e out/target/product/$ANDROID_TARGET/ramdisk.img ]; then
+	echo out/target/product/$ANDROID_TARGET/ramdisk.img missing
+	missing_image_component=1
+    fi
+    if [ ! -e kernel/arch/arm/boot/zImage ]; then
+	echo kernel/arch/arm/boot/zImage missing
+	missing_image_component=1
+    fi
+    if [ ! -e $BUILDOUTPUT/MLO ]; then
+	echo $BUILDOUTPUT/MLO missing
+	missing_image_component=1
+    fi
+    if [ ! -e $BUILDOUTPUT/u-boot.bin ]; then
+	echo $BUILDOUTPUT/u-boot.bin missing
+	missing_image_component=1
+    fi
+    if [ ! -e $BUILDOUTPUT/u-boot.bin.ift ]; then
+	echo $BUILDOUTPUT/u-boot.bin.ift missing
+	missing_image_component=1
+    fi
+    if [ "$missing_image_component" == "0" ]; then
+
+	# Create the directory if it doesn't exist
+	if [ ! -e $BUILDOUTPUT/reflash_nand_sd ]; then
+	    mkdir $BUILDOUTPUT/reflash_nand_sd
+	fi
+
+	if [ ! -e $BUILDOUTPUT/reflash_nand_sd/update ]; then
+            mkdir $BUILDOUTPUT/reflash_nand_sd/update
+	fi
+
+	if [ ! -e $BUILDOUTPUT/update_cache ]; then
+            mkdir $BUILDOUTPUT/update_cache
+ 	fi
+
+	# Copy U-Boot's mkimage to create the multi-part image containing
+	# the Kernel and ramdisk
+	if [ ! -e $BUILDOUTPUT/reflash_nand_sd/mkimage ]; then
+	    cp u-boot/tools/mkimage $BUILDOUTPUT/reflash_nand_sd;
+	fi
+
+	# Copy update script for uboot in field updates
+        if [ -e build-tools/remote_update_info/updatescr.txt ]; then
+	    mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Update Script" -d build-tools/remote_update_info/updatescr.txt $BUILDOUTPUT/update_cache/updatescr.upt
+    	fi
+
+	# Copy the necessary components
+	cp kernel/arch/arm/boot/zImage $BUILDOUTPUT/reflash_nand_sd
+	cp out/target/product/$ANDROID_TARGET/system.img $BUILDOUTPUT/reflash_nand_sd/update/system.img
+        cp $BUILDOUTPUT/reflash_nand_sd/update/system.img $BUILDOUTPUT/update_cache/system.img
+	cp out/target/product/$ANDROID_TARGET/userdata.img $BUILDOUTPUT/reflash_nand_sd/update
+        cp out/target/product/$ANDROID_TARGET/userdata.img $BUILDOUTPUT/update_cache/userdata.img
+	cp out/target/product/$ANDROID_TARGET/ramdisk.img $BUILDOUTPUT/reflash_nand_sd
+	
+	cp $BUILDOUTPUT/u-boot.bin $BUILDOUTPUT/reflash_nand_sd
+	cp $BUILDOUTPUT/MLO $BUILDOUTPUT/reflash_nand_sd/update/MLO
+        cp $BUILDOUTPUT/MLO $BUILDOUTPUT/update_cache/MLO	
+        cp $BUILDOUTPUT/u-boot.bin.ift $BUILDOUTPUT/reflash_nand_sd/update
+        cp $BUILDOUTPUT/u-boot.bin.ift $BUILDOUTPUT/update_cache/u-boot.bin.ift
+
+	# Create script to reflash NAND from SD
+    	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n \
+        	"Logic PD Android SD Boot" -d \
+        	device/logicpd/$ANDROID_TARGET/reflash_nand.cmd \
+        	$BUILDOUTPUT/reflash_nand_sd/boot.scr > mkimage.log 2>&1
+	# Copy script's supporting files
+	cp device/logicpd/$ANDROID_TARGET/android.bmp $BUILDOUTPUT/reflash_nand_sd/update
+	cp device/logicpd/$ANDROID_TARGET/android2.bmp $BUILDOUTPUT/reflash_nand_sd/update
+	cp device/logicpd/$ANDROID_TARGET/done.bmp $BUILDOUTPUT/reflash_nand_sd/update
+
+	pushd $BUILDOUTPUT/reflash_nand_sd > /dev/null 2>&1
+	./mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' -d zImage:ramdisk.img uMulti-Catalyst > ${OUT} 2>&1
+	rm zImage
+	rm ramdisk.img
+	rm mkimage
+	mv uMulti-Catalyst update/
+	popd > /dev/null 2>&1
+        cp $BUILDOUTPUT/reflash_nand_sd/update/uMulti-Catalyst $BUILDOUTPUT/update_cache/uMulti-Catalyst
+    else
+	echo "Components missing, please ensure that all the components"
+	echo "are built, using:"
+	echo -e "\t$0 -b x-load"
+	echo -e "\t$0 -b u-boot"
+	echo -e "\t$0 -b kernel"
+	echo -e "\t$0 -b android"
+    fi
 }
 
 ############################
