@@ -494,13 +494,13 @@ function buildYAFFS2Image
 	cp device/logicpd/$ANDROID_TARGET/done.bmp $BUILDOUTPUT/reflash_nand_sd/update
 
 	pushd $BUILDOUTPUT/reflash_nand_sd > /dev/null 2>&1
-	./mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' -d zImage:ramdisk.img uMulti-Catalyst > ${OUT} 2>&1
+	./mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' -d zImage:ramdisk.img uMulti-Image > ${OUT} 2>&1
 	rm zImage
 	rm ramdisk.img
 	rm mkimage
-	mv uMulti-Catalyst update/
+	mv uMulti-Image update/
 	popd > /dev/null 2>&1
-        cp $BUILDOUTPUT/reflash_nand_sd/update/uMulti-Catalyst $BUILDOUTPUT/update_cache/uMulti-Catalyst
+        cp $BUILDOUTPUT/reflash_nand_sd/update/uMulti-Image $BUILDOUTPUT/update_cache/uMulti-Image
     else
 	echo "Components missing, please ensure that all the components"
 	echo "are built, using:"
