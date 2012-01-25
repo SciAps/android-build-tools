@@ -1,12 +1,12 @@
-#!/bin/sh
+#!/bin/bash
 
 # Uncomment to enable debugging
-# set -x
+#set -x
 
 ### DO NOT MODIFY! ###
 OUT="/dev/null"
 VERBOSE=0
-JNUM=4
+JNUM=8
 TOPDIR=${PWD}
 BUILD="NONE"
 DEPLOY="NONE"
@@ -34,11 +34,6 @@ FORBIDDEN_DEVICES=(sda)
 #
 # DM3730 SOM-LV/Torpedo
 # -----------------------
-# XLOADER_CONFIG="dm3730logic_config"
-# UBOOT_CONFIG="dm3730logic_config"
-# KERNEL_CONFIG="dm3730_logic_android_defconfig"
-# ANDROID_TARGET="dm3730logic"
-
 XLOADER_CONFIG="dm3730logic_config"
 UBOOT_CONFIG="dm3730logic_config"
 KERNEL_CONFIG="omap3logic_android_defconfig"
@@ -47,7 +42,7 @@ ANDROID_TARGET="dm3730logic"
 # Is the script configured?
 # Set the value to "YES" once the values above are properly
 # set up.
-CONFIGURED="NO"
+CONFIGURED="YES"
 
 ############################
 #
@@ -58,7 +53,7 @@ function showHelp
 {
     echo "Build Script"
     echo "---------------"
-    echo -e "Usage: $0 [-b (x-load | u-boot | kernel | wifi | android | android-sdk | android-sdk-addon | all)]\n\t\t  [-c] [-C (x-load | u-boot | kernel | android | all)]\n\t\t  [-v] [-h] [-t X]\n\t\t  [-d (x-load | u-boot | kernel | android)]\n\t\t  [-F] [-D /dev/xxx]"
+    echo -e "Usage: $0 [-b (x-load | u-boot | kernel | wifi | android | yaffs2image | update.zip | android-sdk | android-sdk-addon | all)]\n\t\t  [-c] [-C (x-load | u-boot | kernel | android | all)]\n\t\t  [-v] [-h] [-t X]\n\t\t  [-d (x-load | u-boot | kernel | android)]\n\t\t  [-F] [-D /dev/xxx]"
     echo
     echo -e "\t-b\t\tBuild specific target"
     echo -e "\t-c\t\tClean output directory"
@@ -66,7 +61,7 @@ function showHelp
     echo -e "\t-C\t\tClean specific target"
     echo -e "\t-v\t\tVerbose build output"
     echo -e "\t-h\t\tShow this help"
-    echo -e "\t-t\t\tNumber of threads for Make (Default 4)"
+    echo -e "\t-t\t\tNumber of threads for Make (Default 8)"
     echo -e "\t-d\t\tDeploy specific target [Requires -D]"
     echo -e "\t-D\t\tDevice to use"
     echo -e "\t-F\t\tFormat the SD card  [Requires -D]"
@@ -164,7 +159,7 @@ function packageTarget
 {
     echo -e "*****\nPackaging $PACKAGE\n*****"
 
-    pushd $TOPDIR/$BUILDOUTPUT/target/product/dm3730logic &> /dev/null
+    pushd $TOPDIR/$BUILDOUTPUT/target/product/$ANDROID_TARGET &> /dev/null
 
     if [ -e android_rootfs ]; then
 	rm -rf android_rootfs
@@ -193,9 +188,9 @@ function buildXLoader
     # Build X-Loader
     echo -e "*****\nBuilding X-Loader\n*****"
     pushd $XLOADER_DIR > /dev/null 2>&1
-    if [ ! -e include/config.mk ]; then
+#    if [ ! -e include/config.mk ]; then
 	make $XLOADER_CONFIG > ${OUT} 2>&1
-    fi
+#    fi
     
     # Erase existing binary
     if [ -e x-load.bin ]; then
@@ -231,9 +226,9 @@ function buildUBoot
     echo -e "*****\nBuilding U-Boot\n*****"
     pushd $UBOOT_DIR > /dev/null 2>&1
     # If U-boot has already been configured for build, skip else configure
-    if [ ! -e include/config.mk ]; then
-	make $UBOOT_CONFIG > ${OUT} 2>&1
-    fi
+#    if [ ! -e include/config.mk ]; then
+	make CROSS_COMPILE=arm-eabi- $UBOOT_CONFIG > ${OUT} 2>&1
+#    fi
     
     # Erase existing binary
     if [ -e u-boot.bin ]; then
@@ -246,6 +241,7 @@ function buildUBoot
     if [ $? -eq 0 ] && [ -e u-boot.bin ]; then
 	echo "U-Boot sucessfully built."
 	cp u-boot.bin $BUILDOUTPUT
+	cp u-boot.bin.ift $BUILDOUTPUT
     else
 	echo "+++++++++"
 	echo "ERROR: U-Boot build failed!"
@@ -337,7 +333,7 @@ function buildWifiDriver
     if [ $? -eq 0 ] && [ -e tiwlan_drv.ko ]; then
 	mkdir $BUILDOUTPUT/wifi
 	for file in firmware.bin sdio.ko tiwlan_drv.ko ../../../config/tiwlan.ini; do
-	    cp $file $TOPDIR/$BUILDOUTPUT/target/product/dm3730logic/system/etc/wifi
+	    cp $file $TOPDIR/$BUILDOUTPUT/target/product/$ANDROID_TARGET/system/etc/wifi
 	done
     else
        echo "+++++++++"
@@ -364,13 +360,13 @@ function buildAndroid
     echo -e "*****\nBuilding Android $ANDROID_KERNEL_VERSION\n*****"
     pushd $TOPDIR > /dev/null 2>&1
     if [ $VERBOSE -eq 2 ]; then
-    	make TARGET_PRODUCT=dm3730logic showcommands -j${JNUM} OMAPES=5.x > ${OUT} 2>&1
+    	make TARGET_PRODUCT=$ANDROID_TARGET showcommands -j${JNUM} OMAPES=5.x > ${OUT} 2>&1
     else
-    	make TARGET_PRODUCT=dm3730logic -j${JNUM} OMAPES=5.x > ${OUT} 2>&1
+    	make TARGET_PRODUCT=$ANDROID_TARGET -j${JNUM} OMAPES=5.x > ${OUT} 2>&1
     fi
     
     if [ $? -eq 0 ]; then
-	cd out/target/product/dm3730logic
+	cd out/target/product/$ANDROID_TARGET
 	
 	if [ -e android_rootfs ]; then
 	    rm -rf android_rootfs
@@ -494,13 +490,13 @@ function buildYAFFS2Image
 	cp device/logicpd/$ANDROID_TARGET/done.bmp $BUILDOUTPUT/reflash_nand_sd/update
 
 	pushd $BUILDOUTPUT/reflash_nand_sd > /dev/null 2>&1
-	./mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' -d zImage:ramdisk.img uMulti-Image > ${OUT} 2>&1
+	./mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' -d zImage:ramdisk.img uMulti-Catalyst > ${OUT} 2>&1
 	rm zImage
 	rm ramdisk.img
 	rm mkimage
-	mv uMulti-Image update/
+	mv uMulti-Catalyst update/
 	popd > /dev/null 2>&1
-        cp $BUILDOUTPUT/reflash_nand_sd/update/uMulti-Image $BUILDOUTPUT/update_cache/uMulti-Image
+        cp $BUILDOUTPUT/reflash_nand_sd/update/uMulti-Catalyst $BUILDOUTPUT/update_cache/uMulti-Catalyst
     else
 	echo "Components missing, please ensure that all the components"
 	echo "are built, using:"
@@ -632,6 +628,55 @@ function unmountSD
     fi
 }
 
+############################
+#
+#
+#
+############################
+function createUpdateZip
+{
+    missing_components=0
+    reflash_nand_update_dir=build-out/reflash_nand_sd/update
+    update_dir=build-tools/remote_update_info
+    if [ ! -f build-out/MLO ]; then
+	echo build-out/MLO missing
+	missing_components=1
+    fi
+    for i in uMulti-Catalyst u-boot.bin.ift system.img userdata.img
+    do
+	if [ ! -f $reflash_nand_update_dir/$i ]; then
+	    echo $reflash_nand_update_dir/$i missing
+	    missing_components=1
+	fi
+    done
+    if [ ! -f build-tools/remote_update_info/updatescr.txt ]; then
+	echo build-tools/remote_update_info/updatescr.txt missing
+	missing_components=1
+    fi
+    if [ "$missing_components" == "0" ]; then
+	cp build-out/MLO $update_dir/
+	for i in uMulti-Catalyst u-boot.bin.ift system.img userdata.img
+	do
+	    cp $reflash_nand_update_dir/$i $update_dir/
+	done
+
+	pushd $update_dir > /dev/null 2>&1
+
+	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Swarm udpate" -d updatescr.txt updatescr.upt
+	rm -f update.zip
+	zip -r update.zip MLO u-boot.bin.ift uMulti-Catalyst system.img userdata.img updatescr.upt
+	popd > /dev/null 2>&1
+    else
+	echo "Components missing, please ensure that all the components"
+	echo "are built, using:"
+	echo -e "\t$0 -b x-load"
+	echo -e "\t$0 -b u-boot"
+	echo -e "\t$0 -b kernel"
+	echo -e "\t$0 -b android"
+    fi
+
+}
+
 ##
 # Main code starts here...
 ##
@@ -667,6 +712,10 @@ do
 		BUILD="WIFI"
 	    elif [ "$OPTARG" == "android" ]; then
 		BUILD="ANDROID"
+	    elif [ "$OPTARG" == "yaffs2image" ]; then
+		BUILD="YAFFS2IMAGE"
+	    elif [ "$OPTARG" == "update.zip" ]; then
+		BUILD="UPDATEZIP"
 	    elif [ "$OPTARG" == "android-sdk" ]; then
 		BUILD="ANDROID-SDK"
 	    elif [ "$OPTARG" == "android-sdk-addon" ]; then
@@ -680,6 +729,7 @@ do
 		echo -e "\tkernel"
 		echo -e "\twifi"
 		echo -e "\tandroid"
+		echo -e "\tyaffs2image"
 		echo -e "\tandroid-sdk"
 		echo -e "\tandroid-sdk-addon"
 		echo -e "\tall"
@@ -811,9 +861,18 @@ if [ "$BUILD" == "ANDROID-SDK" ]; then
     buildAndroidSdk
 fi
 
+if [ "$BUILD" == "YAFFS2IMAGE" ]; then
+    buildYAFFS2Image
+fi
+
+if [ "$BUILD" == "UPDATEZIP" ]; then
+    createUpdateZip
+fi
+
 if [ "$BUILD" == "ANDROID-SDK-ADDON" ]; then
     buildAndroidSdkAddon
 fi
+
 
 if [ "$DEPLOY" != "NONE" ]; then
     echo
@@ -821,7 +880,10 @@ if [ "$DEPLOY" != "NONE" ]; then
     echo "password. Do not run this script with 'sudo'."
     echo
     # Create the boot script for sdcard
-    mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Logic PD Android SD Boot" -d device/logicpd/dm3730logic/boot_sd.cmd out/target/product/dm3730logic/boot_sd.scr > mkimage.log 2>&1
+    mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n \
+        "Logic PD Android SD Boot" -d \
+        device/logicpd/$ANDROID_TARGET/boot_sd.cmd \
+        out/target/product/$ANDROID_TARGET/boot_sd.scr > mkimage.log 2>&1
     RET=$?
     if [ $RET -ne 0 ]; then
 	    echo "***"
@@ -830,8 +892,8 @@ if [ "$DEPLOY" != "NONE" ]; then
 	    echo "***"
         rm mkimage.log
     fi
-    if [ -e out/target/product/dm3730logic/boot_sd.scr ]; then
-        cp out/target/product/dm3730logic/boot_sd.scr $BUILDOUTPUT/boot_sd.scr
+    if [ -e out/target/product/$ANDROID_TARGET/boot_sd.scr ]; then
+        cp out/target/product/$ANDROID_TARGET/boot_sd.scr $BUILDOUTPUT/boot_sd.scr
     fi
 
     if [ "$DEPLOY" != "X_LOAD" ]; then
