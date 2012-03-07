@@ -132,7 +132,8 @@ format_device()
 	then
 		sudo -v
 		echo "Partitioning $DEV."
-		sudo fdisk /dev/$DEV >/dev/null 2>&1 <<EOF
+	FATEND=7
+	sudo fdisk "$DEV" &> /dev/null << EOF
 o
 x
 h
@@ -146,7 +147,7 @@ n
 p
 1
 
-+300M
+$FATEND
 t
 c
 a
@@ -158,9 +159,10 @@ p
 
 w
 EOF
+		sleep 2
 
-		sudo mkfs.vfat -F 32 -n boot /dev/${DEV}1 > /dev/null 2>&1
-		sudo mkfs.ext3 -L rootfs /dev/${DEV}2 > /dev/null
+		sudo mkfs.vfat -F 32 -n boot "$DEV"1 > /dev/null 2>&1
+		sudo mkfs.ext3 -L rootfs "$DEV"2 > /dev/null 2>&1
 	else
 		exit 1
 	fi
@@ -534,6 +536,23 @@ build_sub_module()
 	fi
 }
 
+build_sub_module_WiFi()
+{
+	cd ${ROOT}
+	setup_android_env
+	CMD="make -C $* ANDROID_ROOT_DIR=${ROOT} TOOLS_PREFIX=prebuilt/linux-x86/toolchain/arm-eabi-4.4.0/bin/arm-eabi- -j${JOBS}"
+	PATH=${KERNEL_PATH}
+
+	if [ "$CLEAN" == "0" ]
+	then
+		echo ${CMD}
+		${CMD}
+		${CMD} install
+	else
+		${CMD} clean
+	fi
+}
+
 build_sgx_modules()
 {
 	# The make files for sgx are looking for the variable TARGET_ROOT
@@ -545,7 +564,7 @@ build_sgx_modules()
 
 build_wl12xx_modules()
 {
-	build_sub_module hardware/ti/wlan/WL1271_compat/drivers
+	build_sub_module_WiFi hardware/ti/wlan/WL1271_compat/drivers
 }
 
 build_kernel_modules()
