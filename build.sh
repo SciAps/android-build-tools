@@ -1,1043 +1,138 @@
-#!/bin/bash
+#!/bin/sh
 
-# Uncomment to enable debugging
-#set -x
+# General configuration
+TARGET_UBOOT=dm3730logic
+TARGET_XLOADER=${TARGET_UBOOT}
+TARGET_ANDROID=dm3730logic-eng
+TARGET_KERNEL=omap3logic_android_defconfig
 
-### DO NOT MODIFY! ###
-OUT="/dev/null"
-VERBOSE=0
-JNUM=8
-TOPDIR=${PWD}
-BUILD="NONE"
-DEPLOY="NONE"
-FORMAT="NONE"
-CLEANTARGET="NONE"
-FAT32="W95"
-EXT3="Linux"
-UBOOT_DIR=$TOPDIR/u-boot
-XLOADER_DIR=$TOPDIR/x-loader
-BUILDOUTPUT=$TOPDIR/build-out
-### DO NOT MODIFY! ###
+# The following come from u-boot/include/config.mk
+UBOOT_BOARD=logic
+UBOOT_VENDOR=ti
+UBOOT_SOC=omap3
 
-# Devices to avoid to use for deployment
-FORBIDDEN_DEVICES=(sda)
+#######################################################
+#    The rest of this file should remain untouched    #
+#######################################################
 
-# Set the configs for X-Loader, U-Boot, Kernel and Android Target using
-# the guide below.
-#
-# OMAP3530 SOM-LV/Torpedo
-# -----------------------
-# XLOADER_CONFIG="omap3530lv_som_config"
-# UBOOT_CONFIG="omap3_logic_config"
-# KERNEL_CONFIG="omap3_logic_android_defconfig"
-# ANDROID_TARGET="omap3logic"
-#
-# DM3730 SOM-LV/Torpedo
-# -----------------------
-XLOADER_CONFIG="dm3730logic_config"
-UBOOT_CONFIG="dm3730logic_config"
-KERNEL_CONFIG="omap3logic_android_defconfig"
-ANDROID_TARGET="dm3730logic"
+# Normalize the path to the folder build.sh is located in.
+cd `dirname \`which $0\``
 
-# Is the script configured?
-# Set the value to "YES" once the values above are properly
-# set up.
-CONFIGURED="YES"
-
-############################
-#
-#
-#
-############################
-function showHelp
+setup_environment()
 {
-    echo "Build Script"
-    echo "---------------"
-    echo -e "Usage: $0 [-b (x-load | u-boot | kernel | wifi | android | yaffs2image | update.zip | android-sdk | android-sdk-addon | all)]\n\t\t  [-c] [-C (x-load | u-boot | kernel | android | all)]\n\t\t  [-v] [-h] [-t X]\n\t\t  [-d (x-load | u-boot | kernel | android)]\n\t\t  [-F] [-D /dev/xxx]"
-    echo
-    echo -e "\t-b\t\tBuild specific target"
-    echo -e "\t-c\t\tClean output directory"
-    echo -e "\t-p\t\tPackage specific target"
-    echo -e "\t-C\t\tClean specific target"
-    echo -e "\t-v\t\tVerbose build output"
-    echo -e "\t-h\t\tShow this help"
-    echo -e "\t-t\t\tNumber of threads for Make (Default 8)"
-    echo -e "\t-d\t\tDeploy specific target [Requires -D]"
-    echo -e "\t-D\t\tDevice to use"
-    echo -e "\t-F\t\tFormat the SD card  [Requires -D]"
-    exit 0
-}
+	# Setup some environment variables.
+	TIMEFORMAT='%R seconds'
+	ROOT=${PWD}
+	JOBS=8
+	CLEAN=0
+	VERBOSE=0
+	DEV=
 
-############################
-#
-#
-#
-############################
-function cleanBuild
-{
-    for i in MLO u-boot.bin uImage rootfs.tar.bz2
-    do
-	rm -rf $BUILDOUTPUT/$i
-    done
-    exit 0
-}
-
-############################
-#
-#
-#
-############################
-function cleanTarget
-{
-    echo "=== Cleaning $CLEANTARGET ==="
-
-    if [ "$CLEANTARGET" == "ALL" ] || [ "$CLEANTARGET" == "X_LOAD" ]; then
-	pushd $TOPDIR/x-loader > /dev/null 2>&1
-	make CROSS_COMPILE=arm-eabi- clean > /dev/null 2>&1 
-	make CROSS_COMPILE=arm-eabi- mrproper > /dev/null 2>&1
-	make CROSS_COMPILE=arm-eabi- distclean > /dev/null 2>&1
-	popd > /dev/null 2>&1
-
-	echo "X-Load cleaned"
-    fi
-    
-    if [ "$CLEANTARGET" == "ALL" ] || [ "$CLEANTARGET" == "U_BOOT" ]; then
-	pushd $TOPDIR/u-boot > /dev/null 2>&1
-	make CROSS_COMPILE=arm-eabi- clean > /dev/null 2>&1
-	make CROSS_COMPILE=arm-eabi- mrproper > /dev/null 2>&1
-	make CROSS_COMPILE=arm-eabi- distclean > /dev/null 2>&1
-	popd > /dev/null 2>&1
-
-	echo "U-boot cleaned"
-    fi
-    
-    if [ "$CLEANTARGET" == "ALL" ] || [ "$CLEANTARGET" == "KERNEL" ]; then
-	pushd $TOPDIR/kernel > /dev/null 2>&1
-	make ARCH=arm CROSS_COMPILE=arm-eabi- clean > /dev/null 2>&1
-	make ARCH=arm CROSS_COMPILE=arm-eabi- mrproper > /dev/null 2>&1
-	make ARCH=arm CROSS_COMPILE=arm-eabi- distclean > /dev/null 2>&1
-	popd > /dev/null 2>&1
-
-	echo "Kernel cleaned"
-    fi
-
-    if [ "$CLEANTARGET" == "ALL" ] || [ "$CLEANTARGET" == "WIFI" ]; then
-	pushd $TOPDIR/hardware/ti/wlan/wl1271/platforms/os/linux &> /dev/null
-
-	export CROSS_COMPILE=arm-eabi-
 	export ARCH=arm
-	export HOST_PLATFORM=logicpd
-	export KERNEL_DIR=$TOPDIR/kernel
+	export CROSS_COMPILE=arm-eabi-
 
-	make clean &> /dev/null
+	BOOTLOADER_PATH=${ROOT}/prebuilt/linux-x86/toolchain/arm-eabi-4.4.0/bin:${PATH}
+	KERNEL_PATH=${ROOT}/prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin:${PATH}
+	ORIG_PATH=${PATH}
 
-	popd &> /dev/null
-    fi
-
-    if [ "$CLEANTARGET" == "ALL" ] || [ "$CLEANTARGET" == "ANDROID" ]; then
-	pushd $TOPDIR > /dev/null 2>&1
-	make clean > /dev/null 2>&1
-	make mrproper > /dev/null 2>&1
-	make distclean > /dev/null 2>&1
-
-	rm -rf $BUILDOUTPUT
-
-	popd > /dev/null 2>&1
-
-	echo "Android cleaned"
-    fi
-
-    exit 0
-}
-
-############################
-#
-#
-#
-############################
-function packageTarget
-{
-    echo -e "*****\nPackaging $PACKAGE\n*****"
-
-    pushd $TOPDIR/$BUILDOUTPUT/target/product/$ANDROID_TARGET &> /dev/null
-
-    if [ -e android_rootfs ]; then
-	rm -rf android_rootfs
-    fi
-
-    mkdir android_rootfs
-    cp -r root/* android_rootfs
-    cp -r system android_rootfs
-
-    echo "Creating RFS tarball, might ask for SUDO password"
-
-    sudo ../../../../build/tools/mktarball.sh ../../../host/linux-x86/bin/fs_get_stats android_rootfs . rootfs rootfs.tar.bz2
-    cp rootfs.tar.bz2 $BUILDOUTPUT/rootfs.tar.bz2
-
-    popd &> /dev/null
-}
-
-
-############################
-#
-#
-#
-############################
-function buildXLoader
-{
-    # Build X-Loader
-    echo -e "*****\nBuilding X-Loader\n*****"
-    pushd $XLOADER_DIR > /dev/null 2>&1
-#    if [ ! -e include/config.mk ]; then
-	make $XLOADER_CONFIG > ${OUT} 2>&1
-#    fi
-    
-    # Erase existing binary
-    if [ -e x-load.bin ]; then
-	rm -rf x-load.bin
-    fi
-    make CROSS_COMPILE=arm-eabi- all > ${OUT} 2>&1
-    
-    if [ $? -eq 0 ] && [ -e x-load.bin ]; then
-	echo "X-Loader sucessfully built."
-	scripts/signGP
-	cp x-load.bin.ift $BUILDOUTPUT/MLO
-    else
-	echo "+++++++++"
-	echo "ERROR: X-Loader build failed!"
-	if [ $OUT != "" ]; then
-	    echo "Enable '-v' option and re-run to see error."
-	fi
-	echo "+++++++++"
-	exit 1
-    fi
-    
-    popd > /dev/null 2>&1
-}
-
-############################
-#
-#
-#
-############################
-function buildUBoot
-{
-    # Build U-Boot
-    echo -e "*****\nBuilding U-Boot\n*****"
-    pushd $UBOOT_DIR > /dev/null 2>&1
-    # If U-boot has already been configured for build, skip else configure
-#    if [ ! -e include/config.mk ]; then
-	make CROSS_COMPILE=arm-eabi- $UBOOT_CONFIG > ${OUT} 2>&1
-#    fi
-    
-    # Erase existing binary
-    if [ -e u-boot.bin ]; then
-	rm -rf u-boot.bin
-    fi
-    
-    make CROSS_COMPILE=arm-eabi- all > ${OUT} 2>&1
-    
-    # Did U-Boot build?
-    if [ $? -eq 0 ] && [ -e u-boot.bin ]; then
-	echo "U-Boot sucessfully built."
-	cp u-boot.bin $BUILDOUTPUT
-	cp u-boot.bin.ift $BUILDOUTPUT
-    else
-	echo "+++++++++"
-	echo "ERROR: U-Boot build failed!"
-	if [ $OUT != "" ]; then
-	    echo "Enable '-v' option and re-run to see error."
-	fi
-	echo "+++++++++"
-	exit 2
-    fi
-    popd > /dev/null 2>&1
-}
-
-############################
-#
-#
-#
-############################
-function buildKernel
-{
-    KVERSION=`cat $TOPDIR/kernel/Makefile | grep "^VERSION" | awk '{print $3}'`
-    KPATCHLEVEL=`cat $TOPDIR/kernel/Makefile | grep "^PATCHLEVEL" | awk '{print $3}'`
-    KSUBLEVEL=`cat $TOPDIR/kernel/Makefile | grep "^SUBLEVEL" | awk '{print $3}'`
-    KEXTRAVERSION=`cat $TOPDIR/kernel/Makefile | grep "^EXTRAVERSION" | awk '{print $3}'`
-
-    echo -ne "*****\nBuilding Kernel $KVERSION.$KPATCHLEVEL.$KSUBLEVEL"
-    if [ ! -e $KEXTRAVERSION ]; then
-	echo -e "-$KEXTRAVERSION\n*****"
-    else
-	echo -e "\n*****"
-    fi
-    pushd $TOPDIR/kernel > /dev/null 2>&1
-
-    # Has the Kernel been configured?
-    if [ ! -e .config ]; then
-	make ARCH=arm $KERNEL_CONFIG > ${OUT} 2>&1
-    fi
-    
-    # Erase existing binary
-    if [ -e arch/arm/boot/uImage ]; then
-	rm arch/arm/boot/uImage
-    fi
-    
-    # Perform Make
-    make ARCH=arm CROSS_COMPILE=arm-eabi- uImage -j${JNUM} > ${OUT} 2>&1
-    
-    # Did the binary get created?
-    if [ $? -eq 0 ] && [ -e arch/arm/boot/uImage ]; then
-	echo "Kernel successfully built."
-	cp arch/arm/boot/uImage $BUILDOUTPUT/uImage
-    else
-	echo "+++++++++"
-	echo "ERROR: Kernel build failed!"
-	if [ $OUT != "" ]; then
-	    echo "Enable '-v' option and re-run to see error."
-	fi
-	echo "+++++++++"
-	popd > /dev/null 2>&1
-	exit 3
-    fi
-    popd > /dev/null 2>&1
-}
-
-############################
-#
-#
-#
-############################
-function buildWifiDriver
-{
-    # Build TI WiFi Driver
-    echo -e "*****\nBuilding TI WiFi Driver\n*****"
-
-    WIFIPATH=$TOPDIR/hardware/ti/wlan/wl1271
-    SDIOKOPATH=$WIFIPATH/external_drivers/logicpd/Linux/sdio 
-
-    pushd $WIFIPATH/platforms/os/linux &> /dev/null
-
-    if [ -e tiwlan_drv.ko ]; then
-       rm tiwlan_drv.ko
-    fi
-
-    export CROSS_COMPILE=arm-eabi-
-    export ARCH=arm
-    export HOST_PLATFORM=logicpd
-    export KERNEL_DIR=$TOPDIR/kernel
-
-    make &> ${OUT}
-
-    if [ $? -eq 0 ] && [ -e tiwlan_drv.ko ]; then
-	mkdir $BUILDOUTPUT/wifi
-	for file in firmware.bin sdio.ko tiwlan_drv.ko ../../../config/tiwlan.ini; do
-	    cp $file $TOPDIR/$BUILDOUTPUT/target/product/$ANDROID_TARGET/system/etc/wifi
-	done
-    else
-       echo "+++++++++"
-       echo "ERROR: TI WiFi driver build failed!"
-       if [ $OUT != "" ]; then
-           echo "Enable '-v' option and re-run to see error."
-       fi
-       echo "+++++++++"
-       popd > /dev/null 2>&1
-       exit 4
-    fi
-
-    popd &> /dev/null
-}
-
-############################
-#
-#
-#
-############################
-function buildAndroid
-{
-    # Build Android FS
-    echo -e "*****\nBuilding Android $ANDROID_KERNEL_VERSION\n*****"
-    pushd $TOPDIR > /dev/null 2>&1
-    if [ $VERBOSE -eq 2 ]; then
-    	make TARGET_PRODUCT=$ANDROID_TARGET showcommands -j${JNUM} OMAPES=5.x > ${OUT} 2>&1
-    else
-    	make TARGET_PRODUCT=$ANDROID_TARGET -j${JNUM} OMAPES=5.x > ${OUT} 2>&1
-    fi
-    
-    if [ $? -eq 0 ]; then
-	cd out/target/product/$ANDROID_TARGET
+	export PATH=${BOOTLOADER_PATH}
 	
-	if [ -e android_rootfs ]; then
-	    rm -rf android_rootfs
+	if [ -f /etc/gentoo-release ]
+	then
+		# If we're on Gentoo, we can easily specify what java toolset we want to use
+		export GENTOO_VM=sun-jdk-1.6
+		export PATH=$(java-config -O)/bin:${PATH}
 	fi
-	
-	mkdir android_rootfs
-	cp -r root/* android_rootfs
-	cp -r system android_rootfs
-	
-	echo "Creating RFS tarball, might ask for SUDO password"
-	
-	sudo ../../../../build/tools/mktarball.sh ../../../host/linux-x86/bin/fs_get_stats android_rootfs . rootfs rootfs.tar.bz2
-	cp rootfs.tar.bz2 $BUILDOUTPUT/rootfs.tar.bz2
-    else
-	echo "+++++++++"
-	echo "ERROR: Android build failed!"
-	if [ $OUT != "" ]; then
-	    echo "Enable '-v' option and re-run to see error."
-	fi
-	echo "+++++++++"
-	popd > /dev/null 2>&1
-	exit 4
-	
-    fi
-    popd > /dev/null 2>&1
 }
 
-############################
-#
-#
-#
-############################
-function buildYAFFS2Image
+setup_android_env()
 {
-    if [ "$ANDROID_KERNEL_VERSION" == "NONE" ]; then
-	echo "+++++++++"
-	echo "ERROR: Android/Kernel version not set!"
-	echo "       Use '-V 1.6' or '-V 2.1' to build"
-	echo "+++++++++"
-	exit 3
-    fi
-
-    missing_image_component=0
-    # Check that the necessary parts are available
-    if [ ! -e out/target/product/$ANDROID_TARGET/system.img ]; then
-	echo out/target/product/$ANDROID_TARGET/system.img missing
-	missing_image_component=1
-    fi
-    if [ ! -e out/target/product/$ANDROID_TARGET/userdata.img ]; then
-	echo out/target/product/$ANDROID_TARGET/userdata.img missing
-	missing_image_component=1
-    fi
-    if [ ! -e out/target/product/$ANDROID_TARGET/ramdisk.img ]; then
-	echo out/target/product/$ANDROID_TARGET/ramdisk.img missing
-	missing_image_component=1
-    fi
-    if [ ! -e kernel/arch/arm/boot/zImage ]; then
-	echo kernel/arch/arm/boot/zImage missing
-	missing_image_component=1
-    fi
-    if [ ! -e $BUILDOUTPUT/MLO ]; then
-	echo $BUILDOUTPUT/MLO missing
-	missing_image_component=1
-    fi
-    if [ ! -e $BUILDOUTPUT/u-boot.bin ]; then
-	echo $BUILDOUTPUT/u-boot.bin missing
-	missing_image_component=1
-    fi
-    if [ ! -e $BUILDOUTPUT/u-boot.bin.ift ]; then
-	echo $BUILDOUTPUT/u-boot.bin.ift missing
-	missing_image_component=1
-    fi
-    if [ "$missing_image_component" == "0" ]; then
-
-	# Create the directory if it doesn't exist
-	if [ ! -e $BUILDOUTPUT/reflash_nand_sd ]; then
-	    mkdir $BUILDOUTPUT/reflash_nand_sd
+	if [ "${TARGET_PRODUCT}" == "" ]
+	then
+		source build/envsetup.sh >/dev/null
+		lunch ${TARGET_ANDROID} > /dev/null
 	fi
-
-	if [ ! -e $BUILDOUTPUT/reflash_nand_sd/update ]; then
-            mkdir $BUILDOUTPUT/reflash_nand_sd/update
-	fi
-
-	if [ ! -e $BUILDOUTPUT/update_cache ]; then
-            mkdir $BUILDOUTPUT/update_cache
- 	fi
-
-	# Copy U-Boot's mkimage to create the multi-part image containing
-	# the Kernel and ramdisk
-	if [ ! -e $BUILDOUTPUT/reflash_nand_sd/mkimage ]; then
-	    cp u-boot/tools/mkimage $BUILDOUTPUT/reflash_nand_sd;
-	fi
-
-	# Copy update script for uboot in field updates
-        if [ -e build-tools/remote_update_info/updatescr.txt ]; then
-	    mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Update Script" -d build-tools/remote_update_info/updatescr.txt $BUILDOUTPUT/update_cache/updatescr.upt
-    	fi
-
-	# Copy the necessary components
-	cp kernel/arch/arm/boot/zImage $BUILDOUTPUT/reflash_nand_sd
-	cp out/target/product/$ANDROID_TARGET/system.img $BUILDOUTPUT/reflash_nand_sd/update/system.img
-        cp $BUILDOUTPUT/reflash_nand_sd/update/system.img $BUILDOUTPUT/update_cache/system.img
-	cp out/target/product/$ANDROID_TARGET/userdata.img $BUILDOUTPUT/reflash_nand_sd/update
-        cp out/target/product/$ANDROID_TARGET/userdata.img $BUILDOUTPUT/update_cache/userdata.img
-	cp out/target/product/$ANDROID_TARGET/ramdisk.img $BUILDOUTPUT/reflash_nand_sd
-	
-	cp $BUILDOUTPUT/u-boot.bin $BUILDOUTPUT/reflash_nand_sd
-	cp $BUILDOUTPUT/MLO $BUILDOUTPUT/reflash_nand_sd/update/MLO
-        cp $BUILDOUTPUT/MLO $BUILDOUTPUT/update_cache/MLO	
-        cp $BUILDOUTPUT/u-boot.bin.ift $BUILDOUTPUT/reflash_nand_sd/update
-        cp $BUILDOUTPUT/u-boot.bin.ift $BUILDOUTPUT/update_cache/u-boot.bin.ift
-
-	# Create script to reflash NAND from SD
-    	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n \
-        	"Logic PD Android SD Boot" -d \
-        	device/logicpd/$ANDROID_TARGET/reflash_nand.cmd \
-        	$BUILDOUTPUT/reflash_nand_sd/boot.scr > mkimage.log 2>&1
-	# Copy script's supporting files
-	cp device/logicpd/$ANDROID_TARGET/android.bmp $BUILDOUTPUT/reflash_nand_sd/update
-	cp device/logicpd/$ANDROID_TARGET/android2.bmp $BUILDOUTPUT/reflash_nand_sd/update
-	cp device/logicpd/$ANDROID_TARGET/done.bmp $BUILDOUTPUT/reflash_nand_sd/update
-
-	pushd $BUILDOUTPUT/reflash_nand_sd > /dev/null 2>&1
-	./mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' -d zImage:ramdisk.img uMulti-Catalyst > ${OUT} 2>&1
-	rm zImage
-	rm ramdisk.img
-	rm mkimage
-	mv uMulti-Catalyst update/
-	popd > /dev/null 2>&1
-        cp $BUILDOUTPUT/reflash_nand_sd/update/uMulti-Catalyst $BUILDOUTPUT/update_cache/uMulti-Catalyst
-    else
-	echo "Components missing, please ensure that all the components"
-	echo "are built, using:"
-	echo -e "\t$0 -b x-load"
-	echo -e "\t$0 -b u-boot"
-	echo -e "\t$0 -b kernel"
-	echo -e "\t$0 -b android"
-    fi
 }
 
-############################
-#
-#
-#
-############################
-function buildAndroidSdk
+find_removable_devices()
 {
-    # Build Android SDK
-    echo -e "*****\nBuilding Android SDK\n*****"
-    pushd $TOPDIR > /dev/null 2>&1
-    make -j${NUM} sdk > ${OUT} 2>&1
-    if [ -e out/host/linux-x86/sdk/android-sdk_eng.`whoami`_linux-x86.zip ];
-    then
-	cp out/host/linux-x86/sdk/android-sdk_eng.`whoami`_linux-x86.zip \
-	    $BUILDOUTPUT/android-sdk_eng.`whoami`_linux-x86.zip
-    else
-	echo "+++++++++"
-	echo "ERROR: Android SDK build failed!"
-	if [ $OUT != "" ]; then
-	    echo "Enable '-v' option and re-run to see error."
-	fi
-	echo "+++++++++"
-	popd > /dev/null 2>&1
-	exit 5
-    fi
-    popd > /dev/null 2>&1
-}
-
-############################
-#
-#
-#
-############################
-function buildAndroidSdkAddon
-{
-    # Build Android SDK Add on
-    echo -e "*****\nBuilding Android SDK Addon\n*****"
-    pushd $TOPDIR > /dev/null 2>&1
-    make -j${JNUM} PRODUCT-logicpd_addon-sdk_addon > ${OUT} 2>&1
-    cd out/host/linux-x86/sdk_addon
-    for file in `ls *.zip`; do
-	cp $file $BUILDOUTPUT
-    done
-    popd > /dev/null 2>&1
-}
-
-############################
-#
-#
-#
-############################
-function findPartition
-{
-    PART=`sudo fdisk -l $DEV | grep "^$DEV" | grep $1 | awk '{print $1}'`
-    
-    if [ -z $PART ]; then
-	echo "***"
-	echo "SD card doesn't contain a $1 partition."
-	echo "***"
-	exit 3
-    else
-	echo "Found and using $PART"
-    fi
-}
-
-############################
-#
-#
-#
-############################
-function mountPartition
-{
-    COUNT=0
-    while [ 1 ]; do
-	COUNT=$((COUNT+1))
-	sudo mount $1 $2 > mount.log 2>&1
-	RET=$?
-	if [ $RET -eq 0 ]; then
-	    rm -f mount.log
-	    break
-	elif [ $RET -eq 1 ] || [ $RET -eq 16 ] || [ $RET -eq 32 ]; then
-		echo "***"
-		echo "Can't mount parition '$1'"
-		cat mount.log
-		echo "***"
-		rm -f mount.log
-		exit 4
-	else
-	    if [ $COUNT -gt 10 ]; then
-		echo "***"
-		echo "Can't mount parition '$1'"
-		echo "***"
-		rm mount.log
-		exit 5
-	    fi
-	fi
-    done
-}
-
-############################
-#
-#
-#
-############################
-function unmountSD
-{
-    MOUNTS=`mount | grep $DEV`
-    if [ "$MOUNTS" != "" ]; then
-
-	MNT=`mount | grep "$DEV"1 | awk '{print $3}'`
-	if [ "$MNT" != "" ]; then
-	    sudo umount $MNT
-	fi
-	
-	MNT=`mount | grep "$DEV"2 | awk '{print $3}'`
-	if [ "$MNT" != "" ]; then
-	    sudo umount $MNT
-	fi
-    fi
-}
-
-############################
-#
-#
-#
-############################
-function createUpdateZip
-{
-    missing_components=0
-    reflash_nand_update_dir=build-out/reflash_nand_sd/update
-    update_dir=build-tools/remote_update_info
-    if [ ! -f build-out/MLO ]; then
-	echo build-out/MLO missing
-	missing_components=1
-    fi
-    for i in uMulti-Catalyst u-boot.bin.ift system.img userdata.img
-    do
-	if [ ! -f $reflash_nand_update_dir/$i ]; then
-	    echo $reflash_nand_update_dir/$i missing
-	    missing_components=1
-	fi
-    done
-    if [ ! -f build-tools/remote_update_info/updatescr.txt ]; then
-	echo build-tools/remote_update_info/updatescr.txt missing
-	missing_components=1
-    fi
-    if [ "$missing_components" == "0" ]; then
-	cp build-out/MLO $update_dir/
-	for i in uMulti-Catalyst u-boot.bin.ift system.img userdata.img
+	list1=`grep -x 1 /sys/class/block/*/removable | sed s/.*block\\\\/// | sed s/\\\\/removable.*//`
+	for i in ${list1}
 	do
-	    cp $reflash_nand_update_dir/$i $update_dir/
+		if [ "`cat /sys/class/block/$i/size`" != "0" ]
+		then
+			list2+="${i} "
+		fi
 	done
-
-	pushd $update_dir > /dev/null 2>&1
-
-	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Swarm udpate" -d updatescr.txt updatescr.upt
-	rm -f update.zip
-	zip -r update.zip MLO u-boot.bin.ift uMulti-Catalyst system.img userdata.img updatescr.upt
-	popd > /dev/null 2>&1
-    else
-	echo "Components missing, please ensure that all the components"
-	echo "are built, using:"
-	echo -e "\t$0 -b x-load"
-	echo -e "\t$0 -b u-boot"
-	echo -e "\t$0 -b kernel"
-	echo -e "\t$0 -b android"
-    fi
-
+	echo ${list2}
 }
 
-##
-# Main code starts here...
-##
+choose_removable_device()
+{
+	DEV_LIST=`find_removable_devices`
 
-if [ "$CONFIGURED" != "YES" ]; then
-    echo "****"
-    echo "The script isn't configured! The default values must be properly"
-    echo "configured. Please refer to the description in the file for"
-    echo "guidance."
-    echo "****"
-    exit 0
-fi
+	# The following hack for TAB completion is from
+	# http://www.linuxquestions.org/questions/linux-general-1/commandline-autocompletion-for-my-shell-script-668388/
+	set -o emacs
+	bind 'set show-all-if-ambiguous on'
+	bind 'set completion-ignore-case on'
+	COMP_WORDBREAKS=${COMP_WORDBREAKS//:}
+	bind 'TAB:dynamic-complete-history'
+	for i in ${DEV_LIST} ; do
+		history -s $i
+	done
 
-if [ $# -eq 0 ]; then
-    showHelp
-    exit 0
-fi
+	grep -qx 1 /sys/class/block/${DEV}/removable 2>/dev/null && return
 
-# Setup the path to use prebuild Android toolchain
-PATH=${TOPDIR}/prebuilt/linux-x86/toolchain/arm-eabi-4.4.0/bin:${TOPDIR}/Tools:${PATH}
+	while true
+	do
+		for i in ${DEV_LIST}
+		do
+			echo "${i} is $((`cat /sys/class/block/${i}/size`*512)) bytes - `cat /sys/class/block/${i}/device/model`"
+		done
 
-while getopts "cfvhFt:b:d:D:C:V:p:" flag
-do
-    case "$flag" in
-	b)
-	    if [ "$OPTARG" == "x-load" ]; then
-		BUILD="X_LOAD"
-	    elif [ "$OPTARG" == "u-boot" ]; then
-		BUILD="U_BOOT"
-	    elif [ "$OPTARG" == "kernel" ]; then
-		BUILD="KERNEL"
-	    elif [ "$OPTARG" == "wifi" ]; then
-		BUILD="WIFI"
-	    elif [ "$OPTARG" == "android" ]; then
-		BUILD="ANDROID"
-	    elif [ "$OPTARG" == "yaffs2image" ]; then
-		BUILD="YAFFS2IMAGE"
-	    elif [ "$OPTARG" == "update.zip" ]; then
-		BUILD="UPDATEZIP"
-	    elif [ "$OPTARG" == "android-sdk" ]; then
-		BUILD="ANDROID-SDK"
-	    elif [ "$OPTARG" == "android-sdk-addon" ]; then
-		BUILD="ANDROID-SDK-ADDON"
-	    elif [ "$OPTARG" == "all" ]; then
-		BUILD="ALL"
-	    else
-		echo "Invalid build target. Use:"
-		echo -e "\tx-load"
-		echo -e "\tu-boot"
-		echo -e "\tkernel"
-		echo -e "\twifi"
-		echo -e "\tandroid"
-		echo -e "\tyaffs2image"
-		echo -e "\tandroid-sdk"
-		echo -e "\tandroid-sdk-addon"
-		echo -e "\tall"
-		exit 1
-	    fi
-	    ;;
-	c)
-	    cleanBuild
-	    ;;
-	p)
-            if [ "$OPTARG" == "android" ]; then
-		PACKAGE="ANDROID"
-            else
-		echo "Invalid package target. Use:"
-		echo -e "\tandroid"
-		exit 1
-            fi
-            packageTarget
-            ;;
-	C)
-	    if [ "$OPTARG" == "x-load" ]; then
-		CLEANTARGET="X_LOAD"
-	    elif [ "$OPTARG" == "u-boot" ]; then
-		CLEANTARGET="U_BOOT"
-	    elif [ "$OPTARG" == "kernel" ]; then
-		CLEANTARGET="KERNEL"
-	    elif [ "$OPTARG" == "wifi" ]; then
-		CLEANTARGET="WIFI"
-	    elif [ "$OPTARG" == "android" ]; then
-		CLEANTARGET="ANDROID"
-	    elif [ "$OPTARG" == "all" ]; then
-		CLEANTARGET="ALL"
-	    else
-		echo "Invalid clean target. Use:"
-		echo -e "\tx-load"
-		echo -e "\tu-boot"
-		echo -e "\tkernel"
-		echo -e "\twifi"
-		echo -e "\tandroid"
-		echo -e "\tall"
-		exit 1
-	    fi
-	    cleanTarget
-	    ;;
-	v) 
-	    VERBOSE=$(($VERBOSE + 1))    
-	    OUT="/dev/stdout"
-	    ;;
-	h) 
-	    showHelp
-	    ;;
-	t)
-	    JNUM=$OPTARG
-	    ;;
-	d)
-	    if [ "$OPTARG" == "x-load" ]; then
-		DEPLOY="X_LOAD"
-	    elif [ "$OPTARG" == "u-boot" ]; then
-		DEPLOY="U_BOOT"
-	    elif [ "$OPTARG" == "kernel" ]; then
-		DEPLOY="KERNEL"
-	    elif [ "$OPTARG" == "android" ]; then
-		DEPLOY="ANDROID"
-	    else
-		echo "Invalid deploy target. Use:"
-		echo -e "\tx-load"
-		echo -e "\tu-boot"
-		echo -e "\tkernel"
-		echo -e "\tandroid"
-		exit 1
-	    fi
-	    ;;
-	D)
-	    for device in ${FORBIDDEN_DEVICES[*]}; do
-		if [[ $OPTARG =~ $device ]]; then
-		    echo "***"
-		    echo "'$OPTARG' is a forbidden device!"
-		    echo
-		    echo -n "Forbidden devices: "
-		    echo ${FORBIDDEN_DEVICES[*]}
-		    echo "***"
-		    exit 1
+		read -ep "Enter device: " DEV
+		if grep -qx 1 /sys/class/block/${DEV}/removable 2>/dev/null
+		then
+			sudo -v
+			sleep 1
+			return 0
 		fi
-	    done
-	    DEV=$OPTARG
-	    ;;
-	F)
-	    FORMAT="format"
-	    ;;
-    esac
-done
+		echo "Enter a valid device."
+		echo "You can choose one of ${DEV_LIST}"
+	done
+}
 
-if [ "$DEPLOY" != "NONE" ] && [ -z $DEV ]; then
-    echo "No device provided. Use $0 -d $2 -D /dev/xxx"
-    exit 2
-fi
+unmount_device()
+{
+	choose_removable_device
 
-if [ "$FORMAT" != "NONE" ] && [ -z $DEV ]; then
-    echo "No device provided. User $0 -F -D /dev/xxx"
-    exit 2
-fi
+	MNT_POINTS=`cat /proc/mounts | grep $DEV | awk '{print $2}'`
+	for I in ${MNT_POINTS}
+	do
+		echo "Unmounting ${I}"
+		sudo umount ${I} || return 1
+	done
+}
 
-# Create the output directory
-if [ ! -e ${BUILDOUTPUT} ]; then
-    mkdir ${BUILDOUTPUT}
-fi
+format_device()
+{
+	choose_removable_device
 
-if [ "$BUILD" == "ALL" ] || [ "$BUILD" == "X_LOAD" ]; then
-    buildXLoader
-fi
+	# Unmount the device
+	unmount_device || return 1
 
-if [ "$BUILD" == "ALL" ] || [ "$BUILD" == "U_BOOT" ]; then
-    buildUBoot
-fi
+	# Run FDISK
 
-if [ "$BUILD" == "ALL" ] || [ "$BUILD" == "KERNEL" ]; then
-    buildKernel
-fi
-
-if [ "$BUILD" == "ALL" ] || [ "$BUILD" == "WIFI" ]; then
-    buildWifiDriver
-fi
-
-if [ "$BUILD" == "ALL" ] || [ "$BUILD" == "ANDROID" ]; then
-    buildAndroid
-fi
-
-if [ "$BUILD" == "ANDROID-SDK" ]; then
-    buildAndroidSdk
-fi
-
-if [ "$BUILD" == "YAFFS2IMAGE" ]; then
-    buildYAFFS2Image
-fi
-
-if [ "$BUILD" == "UPDATEZIP" ]; then
-    createUpdateZip
-fi
-
-if [ "$BUILD" == "ANDROID-SDK-ADDON" ]; then
-    buildAndroidSdkAddon
-fi
-
-
-if [ "$DEPLOY" != "NONE" ]; then
-    echo
-    echo "Deployment uses 'sudo' which will prompt you for your"
-    echo "password. Do not run this script with 'sudo'."
-    echo
-    # Create the boot script for sdcard
-    mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n \
-        "Logic PD Android SD Boot" -d \
-        device/logicpd/$ANDROID_TARGET/boot_sd.cmd \
-        out/target/product/$ANDROID_TARGET/boot_sd.scr > mkimage.log 2>&1
-    RET=$?
-    if [ $RET -ne 0 ]; then
-	    echo "***"
-        echo "Unable to create the boot script:"
-        cat mkimage.log
-	    echo "***"
-        rm mkimage.log
-    fi
-    if [ -e out/target/product/$ANDROID_TARGET/boot_sd.scr ]; then
-        cp out/target/product/$ANDROID_TARGET/boot_sd.scr $BUILDOUTPUT/boot_sd.scr
-    fi
-
-    if [ "$DEPLOY" != "X_LOAD" ]; then
-        findPartition $FAT32
-        mountPartition $PART /mnt/fat32
-
-        sudo cp $BUILDOUTPUT/boot_sd.scr /mnt/fat32/boot.scr 2>&1
-        sync; sudo umount /mnt/fat32
-    fi
-fi
-
-if [ "$DEPLOY" == "ALL" ] || [ "$DEPLOY" == "X_LOAD" ]; then
-    unmountSD
-
-    if [ ! -e /mnt/fat32 ]; then
-	sudo mkdir /mnt/fat32
-    fi    
-
-    findPartition $FAT32
-
-    mountPartition $PART /mnt/fat32
-    
-    sudo cp $BUILDOUTPUT/MLO /mnt/fat32 > cp.log 2>&1
-    RET=$?
-    sync; sudo umount /mnt/fat32
-    
-    if [ $RET -eq 0 ]; then
-	echo "X-Loader deployed, SD card can be removed"
-	rm -f cp.log
-    else
-	echo "***"
-	echo "Can't deploy X-Loader to '$DEV'"
-	cat cp.log
-	echo "***"
-	rm -f cp.log
-    fi	
-fi
-
-if [ "$DEPLOY" == "ALL" ] || [ "$DEPLOY" == "U_BOOT" ]; then
-    unmountSD
-
-    if [ ! -e /mnt/fat32 ]; then
-	sudo mkdir /mnt/fat32
-    fi
-
-    findPartition $FAT32
-
-    mountPartition $PART /mnt/fat32
-
-    sudo cp $BUILDOUTPUT/u-boot.bin /mnt/fat32 > cp.log 2>&1
-    RET=$?
-    sync; sudo umount /mnt/fat32
-
-    if [ $RET -eq 0 ]; then
-	echo "U-boot deployed, SD card can be removed"
-	rm -f cp.log
-    else
-	echo "***"
-	echo "Can't deploy U-Boot to '$DEV'"
-	cat cp.log
-	echo "***"
-	rm -f cp.log
-    fi	
-fi
-
-if [ "$DEPLOY" == "ALL" ] || [ "$DEPLOY" == "KERNEL" ]; then
-    unmountSD
-
-    if [ ! -e /mnt/fat32 ]; then
-	sudo mkdir /mnt/fat32
-    fi
-
-    findPartition $FAT32
-
-    mountPartition $PART /mnt/fat32
-
-    sudo cp $BUILDOUTPUT/uImage /mnt/fat32/uImage > cp.log 2>&1
-    RET=$?
-    sync; sudo umount /mnt/fat32
-    
-    if [ $RET -eq 0 ]; then
-	echo "Kernel deployed, SD card can be removed"
-	rm -f cp.log
-    else
-	echo "***"
-	echo "Can't deploy Kernel to '$DEV'"
-	cat cp.log
-	echo "***"
-	rm -f cp.log
-    fi		
-fi
-
-if [ "$DEPLOY" == "ALL" ] || [ "$DEPLOY" == "ANDROID" ]; then
-    unmountSD
-
-    if [ ! -e /mnt/ext3 ]; then
-	sudo mkdir /mnt/ext3
-    fi
-
-    findPartition $EXT3
-
-    mountPartition $PART /mnt/ext3
-
-    sudo tar -jxf $BUILDOUTPUT/rootfs.tar.bz2 --numeric-owner -C /mnt/ext3 > tar.log 2>&1
-    RET=$?
-    sync; sudo umount /mnt/ext3
-
-    if [ $RET -eq 0 ]; then
-	echo "Android deployed, SD card can be removed"
-	rm -f tar.log
-    else
-	echo "***"
-	echo "Can't deploy Android to '$DEV'"
-	cat tar.log
-	echo "***"
-	rm -f tar.log
-    fi	
-fi
-
-if [ "$FORMAT" == "format" ]; then
-    # Cause the SUDO password to be asked before we start
-    # since the next 2 commands is making us ask for the
-    # password twice.
-    DISKNAME=`sudo fdisk -l $DEV | grep $DEV:`
-    if [ "$DISKNAME" == "" ]; then
-	echo "***"
-	echo "Can't find '$DEV'"
-	echo "***"
-	exit 4
-    fi
-
-    unmountSD
-
-    echo "Formatting $DISKNAME"
-    echo
-    echo -n "Do you wish to continue? (y/N) "
-    read answer
-    if [ "$answer" == "y" ] || [ "$answer" == "Y" ]; then
-	SDSIZE=`echo $DISKNAME | awk '{print$(NF-1)}'`
-	FATEND=7
-	
-	echo "[Partitioning $DEV...]"
-	
-	sudo fdisk "$DEV" &> /dev/null << EOF
+	echo "Setting up $DEV"
+	echo
+	echo -n "Do you wish to continue? (y/N) "
+	read answer
+	if [ "${answer^*}" == "Y" ]
+	then
+		sudo -v
+		echo "Partitioning $DEV."
+		sudo fdisk /dev/$DEV >/dev/null 2>&1 <<EOF
 o
 x
 h
@@ -1051,7 +146,7 @@ n
 p
 1
 
-$FATEND
++300M
 t
 c
 a
@@ -1063,12 +158,665 @@ p
 
 w
 EOF
-	sleep 2
-	unmountSD
 
-	echo "[Making filesystems...]"
+		sudo mkfs.vfat -F 32 -n boot /dev/${DEV}1 > /dev/null 2>&1
+		sudo mkfs.ext3 -L rootfs /dev/${DEV}2 > /dev/null
+	else
+		exit 1
+	fi
+}
+
+mount_bootloader()
+{
+	if [ "${MNT_BOOTLOADER}" == "" ]
+	then
+		choose_removable_device
+		MNT_BOOTLOADER=`mktemp -d`
+		echo "Mounting bootloader partition"
+		sudo mount /dev/${DEV}1 ${MNT_BOOTLOADER} -o uid=`id -u`
+	fi
+}
+
+mount_root()
+{
+	if [ "${MNT_ROOT}" == "" ]
+	then
+		choose_removable_device
+		MNT_ROOT=`mktemp -d`
+		echo "Mounting root partition"
+		sudo mount /dev/${DEV}2 ${MNT_ROOT}
+	fi
+}
+
+umount_all()
+{
+	if [ ! "${MNT_BOOTLOADER}" == "" ]
+	then
+		echo "Unmounting bootloader partition"
+		sudo umount ${MNT_BOOTLOADER}
+		rmdir ${MNT_BOOTLOADER}
+	fi
+
+	if [ ! "${MNT_ROOT}" == "" ]
+	then
+		echo "Unmounting root partition"
+		sudo umount ${MNT_ROOT}
+		rmdir ${MNT_ROOT}
+	fi
+}
+
+check_component()
+{
+	if [ ! -e ${1} ]
+	then
+		echo "Missing \"${1}\"! Cannot continue."
+		exit 1
+	fi
+}
+
+copy_reflash_nand_sd()
+{
+	setup_android_env
+	cd ${ROOT}
+	mkdir -p $1/update
+
+	# Update x-loader in place if possible.
+	cat x-loader/x-load.bin.ift                                           > $1/MLO
+	cp ${LINK} u-boot/u-boot-no-environ_bin                                 $1/u-boot.bin
+	cp ${LINK} x-loader/x-load.bin.ift                                      $1/update/MLO
+	cp ${LINK} u-boot/u-boot.bin.ift                                        $1/update
+	cp ${LINK} ${ANDROID_PRODUCT_OUT}/boot.img                              $1/update/uMulti-Image
+	cp ${LINK} ${ANDROID_PRODUCT_OUT}/system.img                            $1/update
+	cp ${LINK} ${ANDROID_PRODUCT_OUT}/userdata.img                          $1/update
+	cp ${LINK} device/logicpd/${TARGET_PRODUCT}/android.bmp                 $1/update
+	cp ${LINK} device/logicpd/${TARGET_PRODUCT}/android2.bmp                $1/update
+	cp ${LINK} device/logicpd/${TARGET_PRODUCT}/done.bmp                    $1/update
+	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n \
+	        "Logic PD Android SD Boot" -d \
+        	device/logicpd/${TARGET_PRODUCT}/reflash_nand.cmd \
+		${1}/boot.scr > /dev/null 2>&1
+}
+
+copy_update_cache()
+{
+	setup_android_env
+	cd ${ROOT}
+
+	mkdir -p $1
+
+	cp ${LINK} u-boot/u-boot.bin.ift                                        $1
+	cp ${LINK} x-loader/x-load.bin.ift                                      $1/MLO
+	cp ${LINK} ${ANDROID_PRODUCT_OUT}/boot.img                              $1/uMulti-Image
+	cp ${LINK} ${ANDROID_PRODUCT_OUT}/system.img                            $1
+	cp ${LINK} ${ANDROID_PRODUCT_OUT}/userdata.img                          $1
+	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Update Script" \
+		-d build-tools/remote_update_info/updatescr.txt \
+		$1/updatescr.upt > /dev/null 2>&1
+}
+
+deploy_build_out()
+{
+	setup_android_env
+	cd ${ROOT}
+
+	# Check necessary files.
+	check_component x-loader/x-load.bin.ift
+	check_component u-boot/u-boot.bin
+	check_component u-boot/u-boot-no-environ_bin
+	check_component ${ANDROID_PRODUCT_OUT}/boot.img
+	check_component ${ANDROID_PRODUCT_OUT}/system.img
+	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
 	
-	sudo mkfs.vfat -F 32 -n boot "$DEV"1 > /dev/null 2>&1
-	sudo mkfs.ext3 -L rootfs "$DEV"2 > /dev/null 2>&1
-    fi
-fi
+	mkdir -p build-out/reflash_nand_sd/update
+	mkdir -p build-out/update_cache
+
+	rm -Rf build-out
+	mkdir -p build-out
+	
+	# Copy over x-loader binaries
+	cp -l x-loader/x-load.bin.ift build-out/MLO
+
+	# Copy over u-boot binaries
+	cp -l u-boot/u-boot.bin     build-out/
+	cp -l u-boot/u-boot.bin.ift build-out/
+
+	# Copy over to reflash_nand_sd
+	LINK=-l copy_reflash_nand_sd build-out/reflash_nand_sd/
+
+	# Copy over to update_cache
+	LINK=-l copy_update_cache build-out/update_cache/
+}
+
+deploy_sd()
+{
+	setup_android_env
+	cd ${ROOT}
+
+	# Check necessary files.
+	check_component x-loader/x-load.bin.ift
+	check_component u-boot/u-boot.bin
+	check_component kernel/arch/arm/boot/uImage
+	check_component ${ANDROID_PRODUCT_OUT}/root.tar.bz2
+	check_component ${ANDROID_PRODUCT_OUT}/system.tar.bz2
+	check_component ${ANDROID_PRODUCT_OUT}/userdata.tar.bz2
+
+	mount_bootloader
+	mount_root
+
+	# Using CAT to update the MLO file inplace;
+	# this way it doesn't break the ability to boot.
+	cat x-loader/x-load.bin.ift > ${MNT_BOOTLOADER}/MLO
+	cp u-boot/u-boot.bin ${MNT_BOOTLOADER}
+	cp kernel/arch/arm/boot/uImage ${MNT_BOOTLOADER}
+	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n \
+	        "Logic PD Android SD Boot" -d \
+        	device/logicpd/${TARGET_PRODUCT}/boot_sd.cmd \
+		${MNT_BOOTLOADER}/boot.scr > /dev/null 2>&1
+
+	# Install root files from the various tarballs
+	cd ${MNT_ROOT}
+	sudo rm -Rf ${MNT_ROOT}/*
+
+	echo Extracting root tarball
+	sudo tar --numeric-owner -xjf ${ANDROID_PRODUCT_OUT}/root.tar.bz2
+
+	echo Extracting system tarball
+	sudo tar --numeric-owner -xjf ${ANDROID_PRODUCT_OUT}/system.tar.bz2
+
+	echo Extracting userdata tarball
+	sudo tar --numeric-owner -xjf ${ANDROID_PRODUCT_OUT}/userdata.tar.bz2
+
+	echo Filtering init.rc for mtd mount commands
+	TMP_INIT=`mktemp`
+	sudo cat init.rc | grep -v mtd > ${TMP_INIT}
+	sudo cp ${TMP_INIT} init.rc
+	rm ${TMP_INIT}
+
+	cd ${ROOT}
+	umount_all
+}
+
+deploy_nand()
+{
+	setup_android_env
+	cd ${ROOT}
+
+	# Check necessary files.
+	check_component x-loader/x-load.bin.ift
+	check_component u-boot/u-boot.bin
+	check_component u-boot/u-boot-no-environ_bin
+	check_component ${ANDROID_PRODUCT_OUT}/boot.img
+	check_component ${ANDROID_PRODUCT_OUT}/system.img
+	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
+
+	mount_bootloader
+
+	# Install root files from the various tarballs
+	rm -Rf ${MNT_BOOTLOADER}/update
+	mkdir -p ${MNT_BOOTLOADER}/update
+	copy_reflash_nand_sd ${MNT_BOOTLOADER}/
+	umount_all
+}
+
+deploy_update_zip()
+{
+	setup_android_env
+	cd ${ROOT}
+
+	check_component ${ANDROID_PRODUCT_OUT}/boot.img
+	check_component ${ANDROID_PRODUCT_OUT}/system.img
+	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
+
+	cd ${ANDROID_PRODUCT_OUT}
+	zip ${ROOT}/update.zip boot.img system.img userdata.img android-info.txt
+
+	cd ${ROOT}
+}
+
+deploy_newer()
+{
+	setup_android_env
+	cd ${ANDROID_PRODUCT_OUT}
+	find system -type f -newer system.img   -print -exec adb push '{}' /'{}' ';'
+	find data   -type f -newer userdata.img -print -exec adb push '{}' /'{}' ';'
+}
+
+build_android()
+{
+	setup_android_env
+	if [ "$CLEAN" == "0" ]
+	then
+		make -j${JOBS}
+		ERR=$?
+
+		if [ -e "kernel/arch/arm/boot/zImage" ]
+		then
+			# Create boot.img
+			mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' \
+				-d kernel/arch/arm/boot/zImage:${ANDROID_PRODUCT_OUT}/ramdisk.img \
+				${ANDROID_PRODUCT_OUT}/boot.img
+		fi
+	else
+		make -j${JOBS} clean
+		ERR=$?
+	fi
+	return ${ERR}
+}
+
+build_uboot()
+{
+	cd ${ROOT}/u-boot
+
+	PATH=${BOOTLOADER_PATH}	
+
+	BOARD=`cat include/config.mk 2>/dev/null | awk '/BOARD/ {print $3}'`
+	VENDOR=`cat include/config.mk 2>/dev/null | awk '/VENDOR/ {print $3}'`
+	SOC=`cat include/config.mk 2>/dev/null | awk '/SOC/ {print $3}'`
+
+	if [ "$CLEAN" == "0" ]
+	then
+		# If the configuration isn't set, set it.
+		if [ ! "$UBOOT_BOARD" == "$BOARD" ] ||
+		   [ ! "$UBOOT_VENDOR" == "$VENDOR" ] ||
+		   [ ! "$UBOOT_SOC" == "$SOC" ]
+		then
+			make ${TARGET_UBOOT}_config
+		fi
+
+		make -j${JOBS}
+		ERR=$?
+	else
+		make -j${JOBS} distclean
+		ERR=$?
+		rm -f include/config.mk
+	fi
+
+	cd ${ROOT}
+	return ${ERR}
+}
+
+build_uboot_no_env()
+{
+	if [ "${CLEAN}" == "1" ]
+	then
+		rm build-out/u-boot-no-environ_bin
+	else
+		if [ ! -e u-boot/u-boot-no-environ_bin ]
+		then
+			CLEAN=1 build_uboot
+			CLEAN=0 CMDLINE_FLAGS=-DFORCED_ENVIRONMENT build_uboot
+			cp u-boot/u-boot.bin u-boot/u-boot-no-environ_bin
+			CLEAN=1 build_uboot
+		fi
+	fi
+}
+
+build_xloader()
+{
+	cd ${ROOT}/x-loader
+	PATH=${BOOTLOADER_PATH}
+	TARGET=`cat include/config.mk 2>/dev/null | awk '/BOARD/ {print $3}'`
+
+	if [ "$CLEAN" == "0" ]
+	then
+		# If the configuration isn't set, set it.
+		if [ ! "$TARGET_XLOADER" == "$TARGET" ]
+		then
+			make ${TARGET_XLOADER}_config
+		fi
+
+		# X-Loader sometimes fails with multiple build jobs.
+		make
+		ERR=$?
+	else
+		make -j${JOBS} distclean
+		ERR=$?
+		rm -f include/config.mk
+	fi
+
+	cd ${ROOT}
+	return ${ERR}
+}
+
+build_kernel()
+{
+	setup_android_env
+
+	cd ${ROOT}/kernel
+	PATH=${KERNEL_PATH}
+
+	if [ "$CLEAN" == "0" ]
+	then
+		if [ ! -e ".config" ] 
+		then
+			echo "Using defualt kernel configuration."
+			make ${TARGET_KERNEL} -j${JOBS}
+		else
+			echo "Using existing kernel configuration."
+			echo "To reset to default configuration, do:"
+			echo "  cd kernel"
+			echo "  ARCH=arm make ${TARGET_KERNEL}"
+			echo ""
+		fi
+		ERR=$?
+		[ "$ERR" == "0" ] && make uImage -j${JOBS}
+		ERR=$?
+
+		if [ -e "${ANDROID_PRODUCT_OUT}/ramdisk.img" ]
+		then
+			cd ${ROOT}
+			# Create boot.img
+			mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' \
+				-d kernel/arch/arm/boot/zImage:${ANDROID_PRODUCT_OUT}/ramdisk.img \
+				${ANDROID_PRODUCT_OUT}/boot.img
+		fi
+	else
+		make clean -j${JOBS}
+		ERR=$?
+	fi
+	return ${ERR}
+}
+
+build_sub_module()
+{
+	cd ${ROOT}
+	setup_android_env
+	CMD="make -C $* ANDROID_ROOT_DIR=${ROOT} -j${JOBS}"
+	PATH=${KERNEL_PATH}
+
+	if [ "$CLEAN" == "0" ]
+	then
+		echo ${CMD}
+		${CMD}
+		${CMD} install
+	else
+		${CMD} clean
+	fi
+}
+
+build_sgx_modules()
+{
+	# The make files for sgx are looking for the variable TARGET_ROOT
+	# to help determine the version of android we're running.
+	TARGET_ROOT=${ROOT}
+	setup_android_env
+	build_sub_module hardware/ti/sgx OMAPES=5.x
+}
+
+build_wl12xx_modules()
+{
+	build_sub_module hardware/ti/wlan/WL1271_compat/drivers
+}
+
+build_kernel_modules()
+{
+	BOARD_OMAPES=5.x
+
+	setup_android_env
+
+	if [ "$CLEAN" == "0" ]
+	then
+		cd ${ROOT}/kernel
+		PATH=${KERNEL_PATH}
+		make modules -j${JOBS}
+	fi
+}
+
+build_images()
+{
+	setup_android_env
+
+	# Remove old, stale image files.
+	rm -f `find out -iname system.img`
+	rm -f `find out -iname system.tar.bz2`
+	rm -f `find out -iname userdata.img`
+	rm -f `find out -iname userdata.tar.bz2`
+	rm -f `find out -iname ramdisk.img`
+	rm -f `find out -iname boot.img`
+
+	if [ "${CLEAN}" == "1" ]
+	then
+		# Force removal of output folders
+		rm -Rf ${ANDROID_PRODUCT_OUT}/root
+		rm -Rf ${ANDROID_PRODUCT_OUT}/data
+		rm -Rf ${ANDROID_PRODUCT_OUT}/system
+	else
+		# Do normal Android image creation (including tarball images)
+		make systemimage userdataimage ramdisk systemtarball userdatatarball
+
+		# Create root.tar.bz2
+		cd ${ANDROID_PRODUCT_OUT}
+		../../../../build/tools/mktarball.sh ../../../host/linux-x86/bin/fs_get_stats root . root.tar root.tar.bz2
+		cd ${ROOT}
+
+		# Create boot.img
+		mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' \
+			-d kernel/arch/arm/boot/zImage:${OUT}/ramdisk.img \
+			${ANDROID_PRODUCT_OUT}/boot.img
+	fi
+}
+
+build_fastboot()
+{
+	setup_android_env
+
+	if [ "${FASTBOOT_PARAM}" == "all" ]
+	then
+		setup_android_env
+
+		fastboot flash boot
+		fastboot flash system
+		fastboot flash userdata
+		fastboot reboot
+	else
+		fastboot flash ${FASTBOOT_PARAM}
+	fi
+}
+
+build()
+{
+	ERR=0
+	TMP=`mktemp`
+	TIME=`mktemp`
+
+	if [ "${CLEAN}" == "1" ]
+	then
+		VERB="clean"
+		VERB_ACTIVE="cleaning"
+	else
+		VERB="build"
+		VERB_ACTIVE="building"
+	fi
+
+	NAME=`printf "%-15s" ${1}`
+
+	echo -en "${VERB_ACTIVE^*} ${NAME}"
+
+	if [ "${VERBOSE}" == "1" ]
+	then
+		echo ""
+		time ( build_$1 2>&1 | tee ${TMP} ; [ "${PIPESTATUS[0]}" == "0" ] || false; ) 2> ${TIME}
+		ERR=$?
+		echo -en "Finished ${VERB_ACTIVE} ${NAME} - "
+	else
+		echo -en " - "
+		time (build_$1 > $TMP 2>&1) 2> ${TIME}
+		ERR=$?
+	fi
+
+	if [ "$ERR" != "0" ]
+	then
+		echo -en "failure ${VERB_ACTIVE}.\nSee ${ROOT}/error.log.\n"
+		mv ${TMP} ${ROOT}/error.log
+		rm ${TIME}
+		exit 1
+	else
+		echo -en "took "
+		echo -en `cat ${TIME}`
+		echo -e " to ${VERB}."
+		rm ${TMP}
+	fi
+	rm ${TIME}
+}
+
+deploy()
+{
+	echo "Deploying to $1"
+	deploy_$1
+}
+
+print_help()
+{
+	cat <<EOF
+Usage: $0:
+ Targets:
+  -A       Build all, and deploy to build-out
+  -a       Build Android
+  -u       Build U-Boot
+  -x       Build X-Loader
+  -k       Build Kernel
+  -i       Build system.img, userdata.img, ramdisk.img, and boot.img
+
+ Deployment options:
+  -f [img] Fastboot partition image(s) (system, userdata, boot, or all)
+  -F       Format SD card
+  -B       Deploy to build-out folder
+  -S       Deploy to SD card (copies to FAT and EXT2 partitions, and filters init.rc for mtd mounts)
+  -N       Deploy to SD card (copies over scripts for reflashing nand and appropriate images)
+  -U       Deploy to update.zip (compatible with "fastboot update update.zip")
+
+  -Z       Deploy files that are newer than system.img and userdata.img by using "adb push"
+
+ Job options:
+  -j [num] How many simultaneous compiles to run
+  -c       Clean object files
+
+ Misc options:
+  -s       Spawn a shell
+EOF
+	exit 2
+}
+
+choose_options()
+{
+	count=
+
+	while getopts AZf:asuxkvij:c?bFSBNhU name
+	do
+		eval count=$((count+1))
+		case $name in
+			A) aflag=1;uflag=1;xflag=1;kflag=1;iflag=1;Bflag=1;;
+			j) JOBS="$OPTARG";;
+			c) CLEAN=1;;
+			v) VERBOSE=1;;
+			b) uflag=1;xflag=1;kflag=1;;
+			f) fflag=1;FASTBOOT_PARAM="${OPTARG}";;
+			\?) hflag=1;;
+			*) eval ${name}flag=1;;
+		esac
+	done
+	
+	if [ "$count" == "" ]
+	then
+		print_help
+	fi
+	
+	if [ "$hflag" == "1" ]
+	then
+		print_help
+	fi
+	
+	# If we're building the images target (and not cleaning),
+	# we need to also build the kernel target.
+	if [ "$iflag" == "1" ] &&
+	   [ "${CLEAN}" == "0" ]
+	then
+		kflag=1
+	fi
+}
+
+run_options()
+{
+	if [ "$sflag" == "1" ]
+	then
+		export BOOTLOADER_PATH
+		export KERNEL_PATH
+		setup_android_env
+	
+		${SHELL}
+		exit 0
+	fi
+
+	if [ "$xflag" == "1" ]
+	then
+		build xloader
+	fi
+	
+	if [ "$uflag" == "1" ]
+	then
+		build uboot_no_env
+		build uboot
+	fi
+	
+	if [ "$kflag" == "1" ]
+	then
+		build kernel
+		build kernel_modules
+	fi
+	
+	if [ "$aflag" == "1" ]
+	then
+		build android
+	fi
+
+	if [ "$kflag" == "1" ]
+	then
+		build sgx_modules
+		build wl12xx_modules
+	fi
+	
+	if [ "$iflag" == "1" ]
+	then
+		build images
+	fi
+	
+	if [ "$fflag" == "1" ]
+	then
+		build fastboot
+	fi
+	
+	if [ "$Fflag" == "1" ]
+	then
+		format_device		
+	fi
+
+	if [ "$Sflag" == "1" ]
+	then
+		deploy sd
+	fi
+
+	if [ "$Bflag" == "1" ]
+	then
+		deploy build_out
+	fi
+
+	if [ "$Nflag" == "1" ]
+	then
+		deploy nand
+	fi
+
+	if [ "$Uflag" == "1" ]
+	then
+		deploy update_zip
+	fi
+
+	if [ "$Zflag" == "1" ]
+	then
+		deploy newer
+	fi
+}
+
+setup_environment
+choose_options $*
+run_options
+
