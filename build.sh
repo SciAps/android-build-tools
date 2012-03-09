@@ -338,6 +338,12 @@ deploy_sd()
 
 	cd ${ROOT}
 	umount_all
+	RET=$?
+        if [ $RET -eq 0 ]; then
+	    echo "Image deployed, SD card can be removed"
+        else
+	    echo "Image deployment failed!"
+        fi	
 }
 
 deploy_nand()
