@@ -198,14 +198,20 @@ umount_all()
 	then
 		echo "Unmounting bootloader partition"
 		sudo umount ${MNT_BOOTLOADER}
-		rmdir ${MNT_BOOTLOADER}
+		if [ -e ${MNT_BOOTLOADER} ]
+		then
+			rmdir ${MNT_BOOTLOADER}
+		fi
 	fi
 
 	if [ ! "${MNT_ROOT}" == "" ]
 	then
 		echo "Unmounting root partition"
 		sudo umount ${MNT_ROOT}
-		rmdir ${MNT_ROOT}
+		if [ -e ${MNT_ROOT} ]
+		then
+			rmdir ${MNT_ROOT}
+		fi
 	fi
 }
 
@@ -335,6 +341,9 @@ deploy_sd()
 	sudo cat init.rc | grep -v mtd > ${TMP_INIT}
 	sudo cp ${TMP_INIT} init.rc
 	rm ${TMP_INIT}
+
+	echo Flushing data from buffer to SD card
+	sync
 
 	cd ${ROOT}
 	umount_all
