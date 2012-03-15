@@ -1011,6 +1011,13 @@ shell()
 	exit 0
 }
 
+kernel_config()
+{
+	cd ${PATH_TO_KERNEL}
+	make menuconfig
+}
+
+build_add K  "kernel_config"		'Run "make menuconfig" inside the kernel folder.'
 build_add x  "build xloader" 		"Build X-Loader"
 build_add u  "build uboot_no_env"
 build_add u  "build uboot" 		"Build U-Boot"
