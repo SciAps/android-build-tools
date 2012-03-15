@@ -14,6 +14,21 @@ SELF=`which -- $0`
 # Normalize the path to the folder build.sh is located in.
 cd `dirname \`/usr/bin/which -- $0\``
 
+mktemp_env_cleanup()
+{
+	[ ! "${#TMP_FILES[*]}" == "0" ] && rm -rf ${TMP_FILES[*]}
+}
+
+mktemp_env()
+{
+	# Ensure the cleanup function is trapped.
+	trap mktemp_env_cleanup EXIT
+	local MKTEMP_OUT
+	MKTEMP_OUT=`mktemp ${*:2}`
+	TMP_FILES[${#TMP_FILES[*]}]="${MKTEMP_OUT}"
+	eval $1=${MKTEMP_OUT}
+}
+
 setup_android_env()
 {
 	if [ "${TARGET_PRODUCT}" == "" ]
@@ -32,8 +47,8 @@ setup_android_env()
 		echo "Updating Android build environment cache"
 
 		(
-			TMP=`mktemp`
-			UPT=`mktemp`
+			mktemp_env TMP
+			mktemp_env UPT
 
 			export > ${TMP}
 			. build/envsetup.sh
@@ -308,7 +323,7 @@ mount_bootloader()
 	if [ "${MNT_BOOTLOADER}" == "" ]
 	then
 		choose_removable_device
-		MNT_BOOTLOADER=`mktemp -d`
+		mktemp_env MNT_BOOTLOADER -d
 		echo "Mounting bootloader partition"
 		sudo mount /dev/${DEV}1 ${MNT_BOOTLOADER} -o uid=`id -u`
 	fi
@@ -319,7 +334,7 @@ mount_root()
 	if [ "${MNT_ROOT}" == "" ]
 	then
 		choose_removable_device
-		MNT_ROOT=`mktemp -d`
+		mktemp_env MNT_ROOT -d
 		echo "Mounting root partition"
 		sudo mount /dev/${DEV}2 ${MNT_ROOT}
 	fi
@@ -482,7 +497,7 @@ deploy_sd()
 	sudo tar --numeric-owner -xjf ${ANDROID_PRODUCT_OUT}/userdata.tar.bz2
 
 	echo Filtering init.rc for mtd mount commands
-	TMP_INIT=`mktemp`
+	mktemp_env TMP_INIT
 	sudo cat init.rc | grep -v mtd > ${TMP_INIT}
 	sudo cp ${TMP_INIT} init.rc
 	rm ${TMP_INIT}
@@ -810,8 +825,8 @@ build_fastboot()
 build()
 {
 	ERR=0
-	TMP=`mktemp`
-	TIME=`mktemp`
+	mktemp_env TMP
+	mktemp_env TIME
 
 	if [ "${CLEAN}" == "1" ]
 	then
