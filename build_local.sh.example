@@ -4,6 +4,10 @@ TARGET_XLOADER=${TARGET_UBOOT}
 TARGET_ANDROID=full_blaze-eng
 TARGET_KERNEL=omap4torpedo_defconfig
 
+PATH_TO_KERNEL=${ROOT}/boot/kernel
+PATH_TO_UBOOT=${ROOT}/boot/u-boot
+PATH_TO_XLOADER=${ROOT}/boot/x-loader
+
 # The following come from u-boot/include/config.mk
 UBOOT_BOARD=logic
 UBOOT_VENDOR=ti

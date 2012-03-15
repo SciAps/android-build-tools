@@ -9,10 +9,10 @@
 # See function check_environment() for required definitions #
 #############################################################
 
-# Normalize the path to the folder build.sh is located in.
-cd `dirname \`which -- $0\``
-
 SELF=`which -- $0`
+
+# Normalize the path to the folder build.sh is located in.
+cd `dirname \`/usr/bin/which -- $0\``
 
 setup_android_env()
 {
@@ -69,6 +69,10 @@ setup_default_environment()
 	VERBOSE=0
 	DEV=
 	EXIT_ON_ERROR=1
+
+	PATH_TO_KERNEL=${ROOT}/kernel
+	PATH_TO_UBOOT=${ROOT}/u-boot
+	PATH_TO_XLOADER=${ROOT}/x-loader
 
 	export ARCH=arm
 	export CROSS_COMPILE=arm-eabi-
@@ -359,10 +363,10 @@ copy_reflash_nand_sd()
 	mkdir -p $1/update
 
 	# Update x-loader in place if possible.
-	cat x-loader/x-load.bin.ift                                           > $1/MLO
-	cp ${LINK} u-boot/u-boot-no-environ_bin                                 $1/u-boot.bin
-	cp ${LINK} x-loader/x-load.bin.ift                                      $1/update/MLO
-	cp ${LINK} u-boot/u-boot.bin.ift                                        $1/update
+	cat ${PATH_TO_XLOADER}/x-load.bin.ift                                 > $1/MLO
+	cp ${LINK} ${PATH_TO_UBOOT}/u-boot-no-environ_bin                       $1/u-boot.bin
+	cp ${LINK} ${PATH_TO_XLOADER}/x-load.bin.ift                            $1/update/MLO
+	cp ${LINK} ${PATH_TO_UBOOT}/u-boot.bin.ift                              $1/update
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/boot.img                              $1/update/uMulti-Image
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/system.img                            $1/update
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/userdata.img                          $1/update
@@ -382,8 +386,8 @@ copy_update_cache()
 
 	mkdir -p $1
 
-	cp ${LINK} u-boot/u-boot.bin.ift                                        $1
-	cp ${LINK} x-loader/x-load.bin.ift                                      $1/MLO
+	cp ${LINK} ${PATH_TO_UBOOT}/u-boot.bin.ift                              $1
+	cp ${LINK} ${PATH_TO_XLOADER}/x-load.bin.ift                            $1/MLO
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/boot.img                              $1/uMulti-Image
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/system.img                            $1
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/userdata.img                          $1
@@ -405,9 +409,9 @@ deploy_build_out()
 	cd ${ROOT}
 
 	# Check necessary files.
-	check_component x-loader/x-load.bin.ift
-	check_component u-boot/u-boot.bin
-	check_component u-boot/u-boot-no-environ_bin
+	check_component ${PATH_TO_XLOADER}/x-load.bin.ift
+	check_component ${PATH_TO_UBOOT}/u-boot.bin
+	check_component ${PATH_TO_UBOOT}/u-boot-no-environ_bin
 	check_component ${ANDROID_PRODUCT_OUT}/boot.img
 	check_component ${ANDROID_PRODUCT_OUT}/system.img
 	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
@@ -419,11 +423,11 @@ deploy_build_out()
 	mkdir -p build-out
 	
 	# Copy over x-loader binaries
-	cp -l x-loader/x-load.bin.ift build-out/MLO
+	cp -l ${PATH_TO_XLOADER}/x-load.bin.ift build-out/MLO
 
 	# Copy over u-boot binaries
-	cp -l u-boot/u-boot.bin     build-out/
-	cp -l u-boot/u-boot.bin.ift build-out/
+	cp -l ${PATH_TO_UBOOT}/u-boot.bin     build-out/
+	cp -l ${PATH_TO_UBOOT}/u-boot.bin.ift build-out/
 
 	# Copy over to reflash_nand_sd
 	LINK=-l copy_reflash_nand_sd build-out/reflash_nand_sd/
@@ -444,8 +448,8 @@ deploy_sd()
 	cd ${ROOT}
 
 	# Check necessary files.
-	check_component x-loader/x-load.bin.ift
-	check_component u-boot/u-boot.bin
+	check_component ${PATH_TO_XLOADER}/x-load.bin.ift
+	check_component ${PATH_TO_UBOOT}/u-boot.bin
 	check_component kernel/arch/arm/boot/uImage
 	check_component ${ANDROID_PRODUCT_OUT}/root.tar.bz2
 	check_component ${ANDROID_PRODUCT_OUT}/system.tar.bz2
@@ -456,8 +460,8 @@ deploy_sd()
 
 	# Using CAT to update the MLO file inplace;
 	# this way it doesn't break the ability to boot.
-	cat x-loader/x-load.bin.ift > ${MNT_BOOTLOADER}/MLO
-	cp u-boot/u-boot.bin ${MNT_BOOTLOADER}
+	cat ${PATH_TO_XLOADER}/x-load.bin.ift > ${MNT_BOOTLOADER}/MLO
+	cp ${PATH_TO_UBOOT}/u-boot.bin ${MNT_BOOTLOADER}
 	cp kernel/arch/arm/boot/uImage ${MNT_BOOTLOADER}
 	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n \
 	        "Logic PD Android SD Boot" -d \
@@ -499,9 +503,9 @@ deploy_nand()
 	cd ${ROOT}
 
 	# Check necessary files.
-	check_component x-loader/x-load.bin.ift
-	check_component u-boot/u-boot.bin
-	check_component u-boot/u-boot-no-environ_bin
+	check_component ${PATH_TO_XLOADER}/x-load.bin.ift
+	check_component ${PATH_TO_UBOOT}/u-boot.bin
+	check_component ${PATH_TO_UBOOT}/u-boot-no-environ_bin
 	check_component ${ANDROID_PRODUCT_OUT}/boot.img
 	check_component ${ANDROID_PRODUCT_OUT}/system.img
 	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
@@ -619,11 +623,11 @@ build_uboot_no_env()
 	then
 		rm -f build-out/u-boot-no-environ_bin
 	else
-		if [ ! -e u-boot/u-boot-no-environ_bin ]
+		if [ ! -e ${PATH_TO_UBOOT}/u-boot-no-environ_bin ]
 		then
 			CLEAN=1 build_uboot
 			CLEAN=0 CMDLINE_FLAGS=-DFORCED_ENVIRONMENT build_uboot
-			cp u-boot/u-boot.bin u-boot/u-boot-no-environ_bin
+			cp ${PATH_TO_UBOOT}/u-boot.bin ${PATH_TO_UBOOT}/u-boot-no-environ_bin
 			CLEAN=1 build_uboot
 		fi
 	fi
