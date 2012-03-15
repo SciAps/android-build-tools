@@ -671,7 +671,7 @@ build_kernel()
 	then
 		if [ ! -e ".config" ] 
 		then
-			echo "Using defualt kernel configuration."
+			echo "Using default kernel configuration."
 			make ${TARGET_KERNEL} -j${JOBS}
 		else
 			echo "Using existing kernel configuration."
