@@ -453,6 +453,8 @@ deploy_build_out()
 
 deploy_sd()
 {
+	local TMP_INIT
+
 	if [ "$CLEAN" == "1" ]
 	then
 		echo "Nothing to be done for clean when deploying to SD"
@@ -465,7 +467,7 @@ deploy_sd()
 	# Check necessary files.
 	check_component ${PATH_TO_XLOADER}/x-load.bin.ift
 	check_component ${PATH_TO_UBOOT}/u-boot.bin
-	check_component kernel/arch/arm/boot/uImage
+	check_component ${PATH_TO_KERNEL}/arch/arm/boot/uImage
 	check_component ${ANDROID_PRODUCT_OUT}/root.tar.bz2
 	check_component ${ANDROID_PRODUCT_OUT}/system.tar.bz2
 	check_component ${ANDROID_PRODUCT_OUT}/userdata.tar.bz2
@@ -477,7 +479,7 @@ deploy_sd()
 	# this way it doesn't break the ability to boot.
 	cat ${PATH_TO_XLOADER}/x-load.bin.ift > ${MNT_BOOTLOADER}/MLO
 	cp ${PATH_TO_UBOOT}/u-boot.bin ${MNT_BOOTLOADER}
-	cp kernel/arch/arm/boot/uImage ${MNT_BOOTLOADER}
+	cp ${PATH_TO_KERNEL}/arch/arm/boot/uImage ${MNT_BOOTLOADER}
 	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n \
 	        "Logic PD Android SD Boot" -d \
         	device/logicpd/${TARGET_PRODUCT}/boot_sd.cmd \
@@ -537,6 +539,7 @@ deploy_nand()
 deploy_update_zip()
 {
 	setup_android_env
+
 	if [ "$CLEAN" == "1" ]
 	then
 		echo "Removing update.zip"
@@ -569,26 +572,28 @@ deploy_newer()
 	find data   -type f -newer userdata.img -print -exec adb push '{}' /'{}' ';'
 }
 
+update_boot_img()
+{
+	if [ -e "${PATH_TO_KERNEL}/arch/arm/boot/zImage" ] &&
+	   [ -e "${ANDROID_PRODUCT_OUT}/ramdisk.img" ]
+	then
+		# Create boot.img
+		mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' \
+			-d ${PATH_TO_KERNEL}/arch/arm/boot/zImage:${ANDROID_PRODUCT_OUT}/ramdisk.img \
+			${ANDROID_PRODUCT_OUT}/boot.img
+	fi
+}
+
 build_android()
 {
 	setup_android_env
 	if [ "$CLEAN" == "0" ]
 	then
 		make -j${JOBS}
-		ERR=$?
-
-		if [ -e "kernel/arch/arm/boot/zImage" ]
-		then
-			# Create boot.img
-			mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' \
-				-d kernel/arch/arm/boot/zImage:${ANDROID_PRODUCT_OUT}/ramdisk.img \
-				${ANDROID_PRODUCT_OUT}/boot.img
-		fi
+		update_boot_img
 	else
 		make -j${JOBS} clean
-		ERR=$?
 	fi
-	return ${ERR}
 }
 
 uboot_check_config()
@@ -619,21 +624,17 @@ build_uboot()
 	if [ "$CLEAN" == "0" ]
 	then
 		uboot_check_config
-
 		make -j${JOBS}
-		ERR=$?
 	else
 		make -j${JOBS} distclean
-		ERR=$?
 		rm -f include/config.mk
 	fi
-
-	cd ${ROOT}
-	return ${ERR}
 }
 
 build_uboot_no_env()
 {
+	local CLEAN
+
 	if [ "${CLEAN}" == "1" ]
 	then
 		rm -f build-out/u-boot-no-environ_bin
@@ -650,6 +651,9 @@ build_uboot_no_env()
 
 build_xloader()
 {
+	local PATH
+	local TARGET
+
 	cd ${PATH_TO_XLOADER}
 	PATH=${BOOTLOADER_PATH}
 	TARGET=`cat include/config.mk 2>/dev/null | awk '/BOARD/ {print $3}'`
@@ -664,19 +668,16 @@ build_xloader()
 
 		# X-Loader sometimes fails with multiple build jobs.
 		make
-		ERR=$?
 	else
 		make -j${JOBS} distclean
-		ERR=$?
 		rm -f include/config.mk
 	fi
-
-	cd ${ROOT}
-	return ${ERR}
 }
 
 build_kernel()
 {
+	local PATH
+
 	setup_android_env
 
 	cd ${PATH_TO_KERNEL}
@@ -687,35 +688,26 @@ build_kernel()
 		if [ ! -e ".config" ] 
 		then
 			echo "Using default kernel configuration."
-			make ${TARGET_KERNEL} -j${JOBS}
+			make ${TARGET_KERNEL} -j${JOBS} && make zImage modules -j${JOBS}
 		else
 			echo "Using existing kernel configuration."
 			echo "To reset to default configuration, do:"
 			echo "  cd kernel"
 			echo "  ARCH=arm make ${TARGET_KERNEL}"
 			echo ""
+			make zImage modules -j${JOBS}
 		fi
-		ERR=$?
-		[ "$ERR" == "0" ] && make uImage -j${JOBS}
-		ERR=$?
-
-		if [ -e "${ANDROID_PRODUCT_OUT}/ramdisk.img" ]
-		then
-			cd ${ROOT}
-			# Create boot.img
-			mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' \
-				-d kernel/arch/arm/boot/zImage:${ANDROID_PRODUCT_OUT}/ramdisk.img \
-				${ANDROID_PRODUCT_OUT}/boot.img
-		fi
+		update_boot_img
 	else
 		make clean -j${JOBS}
-		ERR=$?
 	fi
-	return ${ERR}
 }
 
 build_sub_module()
 {
+	local CMD
+	local PATH
+
 	cd ${ROOT}
 	setup_android_env
 	CMD="make -C $* ANDROID_ROOT_DIR=${ROOT} -j${JOBS}"
@@ -733,6 +725,8 @@ build_sub_module()
 
 build_sgx_modules()
 {
+	local TARGET_ROOT
+
 	setup_android_env
 
 	if [ "$CLEAN" == "0" ] && 
@@ -755,20 +749,6 @@ build_sgx_modules()
 build_wl12xx_modules()
 {
         build_sub_module hardware/ti/wlan/WL1271_compat/drivers
-}
-
-build_kernel_modules()
-{
-	BOARD_OMAPES=5.x
-
-	setup_android_env
-
-	if [ "$CLEAN" == "0" ]
-	then
-		cd ${ROOT}/kernel
-		PATH=${KERNEL_PATH}
-		make modules -j${JOBS}
-	fi
 }
 
 build_images()
@@ -799,9 +779,7 @@ build_images()
 		cd ${ROOT}
 
 		# Create boot.img
-		mkimage -A arm -O linux -T multi -C none -a 0x82000000 -e 0x82000000 -n 'Logic PD' \
-			-d kernel/arch/arm/boot/zImage:${OUT}/ramdisk.img \
-			${ANDROID_PRODUCT_OUT}/boot.img
+		update_boot_img
 	fi
 }
 
@@ -822,9 +800,20 @@ build_fastboot()
 	fi
 }
 
+build_error()
+{
+	exit 1
+}
+
 build()
 {
-	ERR=0
+	local ERR=0
+	local TMP
+	local TIME
+	local NAME
+	local VERB
+	local VERB_ACTIVE
+
 	mktemp_env TMP
 	mktemp_env TIME
 
@@ -844,12 +833,12 @@ build()
 	if [ "${VERBOSE}" == "1" ]
 	then
 		echo ""
-		time ( build_$1 ${*:2} 2>&1 | tee ${TMP} ; [ "${PIPESTATUS[0]}" == "0" ] || false; ) 2> ${TIME} 3>&1
+		time ( trap build_error ERR;set -E;build_$1 ${*:2} 2>&1 | tee ${TMP} ; [ "${PIPESTATUS[0]}" == "0" ] || false; ) 2> ${TIME} 3>&1
 		ERR=$?
 		echo -en "Finished ${VERB_ACTIVE} ${NAME} - "
 	else
 		echo -en " - "
-		time (build_$1 ${*:2} > $TMP 2>&1) 2> ${TIME} 3>&1
+		time ( trap build_error ERR;set -E;build_$1 ${*:2} > $TMP 2>&1) 2> ${TIME} 3>&1
 		ERR=$?
 	fi
 
@@ -1037,7 +1026,6 @@ build_add x  "build xloader" 		"Build X-Loader"
 build_add u  "build uboot_no_env"
 build_add u  "build uboot" 		"Build U-Boot"
 build_add k  "build kernel" 		"Build Kernel"
-build_add k  "build kernel_modules"
 build_add a  "build android" 		"Build Android"
 build_add k  "build sgx_modules"
 build_add k  "build wl12xx_modules"
@@ -1084,7 +1072,6 @@ then
 fi
 
 setup_android_env
-
 check_environment
 choose_options "${@}"
 run_options
