@@ -597,7 +597,7 @@ uboot_check_config()
 
 build_uboot()
 {
-	cd ${ROOT}/u-boot
+	cd ${PATH_TO_UBOOT}
 
 	PATH=${BOOTLOADER_PATH}	
 
@@ -635,7 +635,7 @@ build_uboot_no_env()
 
 build_xloader()
 {
-	cd ${ROOT}/x-loader
+	cd ${PATH_TO_XLOADER}
 	PATH=${BOOTLOADER_PATH}
 	TARGET=`cat include/config.mk 2>/dev/null | awk '/BOARD/ {print $3}'`
 
@@ -664,7 +664,7 @@ build_kernel()
 {
 	setup_android_env
 
-	cd ${ROOT}/kernel
+	cd ${PATH_TO_KERNEL}
 	PATH=${KERNEL_PATH}
 
 	if [ "$CLEAN" == "0" ]
