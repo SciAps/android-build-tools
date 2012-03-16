@@ -12,13 +12,22 @@
 SELF=`which -- $0`
 
 # Normalize the path to the folder build.sh is located in.
-cd `dirname \`/usr/bin/which -- $0\``
+cd `dirname \`which -- $0\``
 
+##
+# Cleans up all tmp files created by mktemp_env
+##
 mktemp_env_cleanup()
 {
 	[ ! "${#TMP_FILES[*]}" == "0" ] && rm -rf ${TMP_FILES[*]}
 }
 
+##
+# mktemp_env [env] [mktemp args]
+#
+# Calls mktemp, sets [env] to the result, and stores the resulting file
+# in a list for cleanup when the script exits
+##
 mktemp_env()
 {
 	# Ensure the cleanup function is trapped.
@@ -29,6 +38,12 @@ mktemp_env()
 	eval $1=${MKTEMP_OUT}
 }
 
+##
+# setup_android_env
+#
+# Generates and caches the android environment into
+# .cached_android_env for usage in later calls to the script
+##
 setup_android_env()
 {
 	if [ "${TARGET_PRODUCT}" == "" ]
@@ -74,6 +89,13 @@ fi
 
 BUILD_TARGETS=
 
+##
+# setup_default_environment
+#
+# Sets up default environmental settings for script in general,
+# including paths, etc.  Can be overridden on a per-project basis
+# later.
+##
 setup_default_environment()
 {
 	# Setup some environment variables.
@@ -121,6 +143,12 @@ check_environment()
 	fi
 }
 
+##
+# array_delete_index [array_env] [index to delete]
+#
+# Removes an index from an array, and moves all existing entries
+# up one index to compensate for index removed.
+##
 array_delete_index()
 {
 	local i
@@ -141,6 +169,12 @@ array_delete_index()
         eval unset $1'['$((i-1))']'
 }
 
+##
+# array_insert_index [array_env] [index to insert]
+#
+# Inserts an empty index into given index position, and pushes back
+# the rest of the array to compensate.
+##
 array_insert_index()
 {
 	local i
@@ -161,6 +195,11 @@ array_insert_index()
         eval $1'['$((i+1))']'="${3}"
 }
 
+##
+# build_add [command line option] [command to run] [help for command]
+#
+# Adds a build option into the build system.
+##
 build_add()
 {
 	local cnt=${#BUILD_OPTION[*]}
@@ -171,6 +210,12 @@ build_add()
 	BUILD_HELP[${cnt}]="${*:3}"
 }
 
+##
+# build_del [command line option] [command to run]
+#
+# Finds a specific command line option/command to run combination, removes it,
+# and removes its help.  Useful for local customizations.
+##
 build_del()
 {
 	local i
@@ -187,13 +232,25 @@ build_del()
 	done
 }
 
+##
+# copy_function [original] [new]
+#
+# Copies a function from one name, to another name.
+#
 # copy_function() taken from
 # http://stackoverflow.com/questions/1203583/how-do-i-rename-a-bash-function
+##
 copy_function() {
 	declare -F $1 > /dev/null || return 1
 	eval "$(echo "${2}()"; declare -f ${1} | tail -n +2)"
 }
 
+##
+# find_removable_devices
+#
+# Echos to standard out a list of all devices available in the system
+# that have the "removable" attribute.  Useful for finding SD cards.
+##
 find_removable_devices()
 {
 	local list1
@@ -211,6 +268,12 @@ find_removable_devices()
 	echo ${list2}
 }
 
+##
+# choose_removable_device
+#
+# Presents a user with a list of removable devices to choose from, and
+# stores the result into the environment variable DEV
+##
 choose_removable_device()
 {
 	local DEV_LIST
@@ -250,6 +313,34 @@ choose_removable_device()
 	done
 }
 
+##
+# find_device_partition [env] [dev] [number]
+#
+# Finds a device's partition name for a specific number.
+# It compensates for cases such as mmcblk0p1, etc.
+##
+find_device_partition()
+{
+	local find_part
+	local I
+	for I in /sys/class/block/$2/*/partition
+	do
+		find_part=`echo $I | awk -F / '{print $6}'`
+		if echo ${find_part} | grep -q "[^0123456789]$3\$"
+		then
+			eval $1=${find_part}
+			return 0
+		fi
+	done
+	echo "Unable to find partition #$3 for $2"
+	return 1
+}
+
+##
+# umount_device [dev]
+#
+# Finds all mountings of a given device, and unmounts them
+##
 unmount_device()
 {
 	local I
@@ -265,9 +356,18 @@ unmount_device()
 	done
 }
 
+##
+# format_device
+#
+# Formats a removable device chosen by the user with two partitions
+# 1. FAT
+# 2. EXT2
+##
 format_device()
 {
 	local answer
+	local part1
+	local part2
 
 	choose_removable_device
 
@@ -310,41 +410,73 @@ p
 
 w
 EOF
+		find_device_partition part1 ${DEV} 1
+		find_device_partition part2 ${DEV} 2
 
-		sudo mkfs.vfat -F 32 -n boot /dev/${DEV}1 > /dev/null 2>&1
-		sudo mkfs.ext3 -L rootfs /dev/${DEV}2 > /dev/null
+		sudo mkfs.vfat -F 32 -n boot /dev/${part1} > /dev/null 2>&1
+		sudo mkfs.ext3 -L rootfs /dev/${part2} > /dev/null
 	else
 		exit 1
 	fi
 }
 
+##
+# mount_bootloader
+#
+# Mounts partition 1 of the device specified in DEV, and stores the
+# mount point location in ${MNT_BOOTLOADER}
+##
 mount_bootloader()
 {
+	local part
+
 	if [ "${MNT_BOOTLOADER}" == "" ]
 	then
 		choose_removable_device
 		mktemp_env MNT_BOOTLOADER -d
+		find_device_partition part ${DEV} 1
 		echo "Mounting bootloader partition"
-		sudo mount /dev/${DEV}1 ${MNT_BOOTLOADER} -o uid=`id -u`
+		sudo mount /dev/${part} ${MNT_BOOTLOADER} -o uid=`id -u`
 	fi
 }
 
+##
+# mount_root
+#
+# Mounts partition 2 of the device specified in DEV, and stores the
+# mount point location in ${MNT_ROOT}
+##
 mount_root()
 {
+	local part
+
 	if [ "${MNT_ROOT}" == "" ]
 	then
 		choose_removable_device
 		mktemp_env MNT_ROOT -d
+		find_device_partition part ${DEV} 2
 		echo "Mounting root partition"
-		sudo mount /dev/${DEV}2 ${MNT_ROOT}
+		sudo mount /dev/${part} ${MNT_ROOT}
 	fi
 }
 
+##
+# build_info [message]
+#
+# Prints to file descriptor 3 a message passed in the command line arguments.  Used
+# for printing a message while inside a build that has verbosity turned off.
+##
 build_info()
 {
 	echo -en "\033[1m$* - \033[0m" 1>&3
 }
 
+##
+# umount_all
+#
+# Unmounts all partitions mounted in the script - specifically, MNT_BOOTLOADER and
+# MNT_ROOT.
+##
 umount_all()
 {
 	if [ ! "${MNT_BOOTLOADER}" == "" ]
@@ -362,6 +494,12 @@ umount_all()
 	fi
 }
 
+##
+# check_component [filename]
+#
+# Checks to see if a given file is in the filesystem.  If it isn't, it prints
+# a warning and exits.
+##
 check_component()
 {
 	if [ ! -e ${1} ]
@@ -371,6 +509,11 @@ check_component()
 	fi
 }
 
+##
+# copy_reflash_nand_sd [destination folder]
+#
+# Copies the filelist for a reflash nand SD to a given target folder.
+##
 copy_reflash_nand_sd()
 {
 	setup_android_env
@@ -394,6 +537,11 @@ copy_reflash_nand_sd()
 		${1}/boot.scr > /dev/null 2>&1
 }
 
+##
+# copy_update_cache [destination folder]
+#
+# Copies the filelist for the update cache script to a given target folder.
+##
 copy_update_cache()
 {
 	setup_android_env
@@ -411,6 +559,12 @@ copy_update_cache()
 		$1/updatescr.upt > /dev/null 2>&1
 }
 
+##
+# deploy_build_out
+#
+# Copies files (or links) from the actual build output folder into build-out/
+# to make it easier to find the various files created by the build system
+##
 deploy_build_out()
 {
 	if [ "$CLEAN" == "1" ]
@@ -451,6 +605,12 @@ deploy_build_out()
 	LINK=-l copy_update_cache build-out/update_cache/
 }
 
+##
+# deploy_sd
+#
+# Creates a bootable SD card that runs the entire android environment
+# off of the SD card.
+##
 deploy_sd()
 {
 	local TMP_INIT
@@ -508,6 +668,13 @@ deploy_sd()
 	umount_all
 }
 
+##
+# deploy_nand
+#
+# Creates a SD card that burns everything needed to boot Android
+# out of NAND, into NAND.  This includes the bootloader, kernel, and
+# userspace environment.
+##
 deploy_nand()
 {
 	if [ "$CLEAN" == "1" ]
@@ -536,6 +703,15 @@ deploy_nand()
 	umount_all
 }
 
+##
+# deploy_update_zip
+#
+# Creates an update.zip file that can be used with
+#
+#    fastboot update update.zip
+#
+# to update the NAND file system and kernel.
+##
 deploy_update_zip()
 {
 	setup_android_env
@@ -559,6 +735,11 @@ deploy_update_zip()
 	cd ${ROOT}
 }
 
+##
+# deploy_newer
+#
+# Pushes files over ADB that are newer than the currently built system.img and userdata.img.
+##
 deploy_newer()
 {
 	if [ "$CLEAN" == "1" ]
@@ -572,6 +753,11 @@ deploy_newer()
 	find data   -type f -newer userdata.img -print -exec adb push '{}' /'{}' ';'
 }
 
+##
+# update_boot_img
+#
+# Creates boot.img if the requisite files are present.
+##
 update_boot_img()
 {
 	if [ -e "${PATH_TO_KERNEL}/arch/arm/boot/zImage" ] &&
@@ -584,9 +770,16 @@ update_boot_img()
 	fi
 }
 
+##
+# build_android
+#
+# Builds the Android environment
+##
 build_android()
 {
 	setup_android_env
+	cd ${ROOT}
+
 	if [ "$CLEAN" == "0" ]
 	then
 		make -j${JOBS}
@@ -596,6 +789,12 @@ build_android()
 	fi
 }
 
+##
+# uboot_check_config
+#
+# Checks to see if the uboot configuration needs to be changed to match the
+# configuration choices present in the script by inspecting u-boot/include/config.mk
+##
 uboot_check_config()
 {
 	local BOARD
@@ -615,6 +814,11 @@ uboot_check_config()
 	fi
 }
 
+##
+# build_uboot
+#
+# Compiles u-boot
+##
 build_uboot()
 {
 	cd ${PATH_TO_UBOOT}
@@ -631,6 +835,16 @@ build_uboot()
 	fi
 }
 
+##
+# build_uboot_no_env
+#
+# Compiles u-boot with the environment setting CMDLINE_FLAGS=-DFORCED_ENVIRONMENT
+# to build a u-boot with the environment variables in u-boot not being stored
+# in NAND, but defaults only.  Needs a modified u-boot build environment.
+#
+# (Useful for when one wants to make a NAND update card not pay attention
+# to the existing NAND environment)
+##
 build_uboot_no_env()
 {
 	local CLEAN
@@ -649,6 +863,11 @@ build_uboot_no_env()
 	fi
 }
 
+##
+# build_xloader
+#
+# Builds x-loader.
+##
 build_xloader()
 {
 	local PATH
@@ -674,6 +893,11 @@ build_xloader()
 	fi
 }
 
+##
+# build_kernel
+#
+# Builds the kernel (and modules)
+##
 build_kernel()
 {
 	local PATH
@@ -703,6 +927,13 @@ build_kernel()
 	fi
 }
 
+##
+# build_sub_module [path] [arguments to make]
+#
+# Builds a folder with the intention that the folder run against
+# the kernel make system.  Used for build_sgx_modules and
+# build_wl12xx_modules.
+##
 build_sub_module()
 {
 	local CMD
@@ -723,6 +954,11 @@ build_sub_module()
 	fi
 }
 
+##
+# build_sgx_modules
+#
+# Builds the SGX kernel modules.
+##
 build_sgx_modules()
 {
 	local TARGET_ROOT
@@ -746,11 +982,23 @@ build_sgx_modules()
 	build_sub_module hardware/ti/sgx OMAPES=5.x PLATFORM_VERSION=${PLATFORM_VERSION}
 }
 
+##
+# build_wl12xx_modules
+#
+# Builds the wl12xx kernel modules
+##
 build_wl12xx_modules()
 {
         build_sub_module hardware/ti/wlan/WL1271_compat/drivers
 }
 
+##
+# build_images
+#
+# Ensures the Android images are in a sane state; i.e. by wiping
+# the currently generated system.img, userdata.img, etc, and calling
+# the build system again.
+##
 build_images()
 {
 	setup_android_env
@@ -783,6 +1031,16 @@ build_images()
 	fi
 }
 
+##
+# build_fastboot [arg]
+#
+# Calls
+#
+#    fastboot flash [arg]
+#
+# when [arg] is not "all".  Otherwise, it calls boot, system, and userdata
+# in lieu of "all" when all is specified.
+##
 build_fastboot()
 {
 	setup_android_env
@@ -800,11 +1058,28 @@ build_fastboot()
 	fi
 }
 
+##
+# build_error
+#
+# Callback for build errors via "trap".  Causes the function
+# called to exit back out to the build() routine upon any error.
+##
 build_error()
 {
 	exit 1
 }
 
+##
+# build [target] [args to target]
+#
+# Calls
+#
+#    build_[target] [args to target]
+#
+# wrapped around storing the output into a temporary file in /tmp
+# as well as managing verbosity, and timing of how long the build
+# took.
+##
 build()
 {
 	local ERR=0
@@ -862,6 +1137,13 @@ build()
 	return ${ERR}
 }
 
+##
+# deploy_fastboot
+#
+# Waits for device to be present in fastboot mode, builds the kernel, and sends it.
+# If the kernel build has issues, it views error.log, and rebuilds the kernel after
+# the user as finished looking at the error log.
+##
 deploy_fastboot()
 {
 	if [ "$CLEAN" == "1" ]
@@ -890,12 +1172,28 @@ deploy_fastboot()
 }
 
 
+##
+# deploy [target] [target arguments]
+#
+# Wrapper for calling
+#
+#    deploy_[target] [arguments]
+#
+# while giving a common header for all deploy targets.
+##
 deploy()
 {
 	echo "Deploying to $1"
 	deploy_$1 ${*:2}
 }
 
+##
+# print_help_match_cmd [match]
+#
+# Finds all help for any command starting with [match] added
+# by "build_add" to the build system, and removes the help
+# associated with the command after.
+##
 print_help_match_cmd()
 {
 	local match=$1
@@ -921,6 +1219,11 @@ print_help_match_cmd()
 	done
 }
 
+##
+# print_help
+#
+# Prints help for build targets, deployment options, and other misc. commands.
+##
 print_help()
 {
 	cat <<EOF
@@ -944,6 +1247,12 @@ EOF
 	exit 2
 }
 
+##
+# build_all
+#
+# Finds all commands added to the build system with "build " at the
+# front of the command and runs them.
+##
 build_all()
 {
 	local i
@@ -960,6 +1269,12 @@ build_all()
 	done
 }
 
+##
+# choose_options [command line arguments to script]
+#
+# Parses command line arguments against build options added by
+# "build_add" to the script.
+##
 choose_options()
 {
 	local count=
@@ -1005,6 +1320,11 @@ choose_options()
 	fi
 }
 
+##
+# shell
+#
+# Spawns a shell with the Android environment.
+##
 shell()
 {
 	export BOOTLOADER_PATH
@@ -1015,31 +1335,22 @@ shell()
 	exit 0
 }
 
+##
+# kernel_config
+#
+# Runs "make menuconfig" in the kernel folder.
+##
 kernel_config()
 {
 	cd ${PATH_TO_KERNEL}
 	make menuconfig
 }
 
-build_add K  "kernel_config"		'Run "make menuconfig" inside the kernel folder.'
-build_add x  "build xloader" 		"Build X-Loader"
-build_add u  "build uboot_no_env"
-build_add u  "build uboot" 		"Build U-Boot"
-build_add k  "build kernel" 		"Build Kernel"
-build_add a  "build android" 		"Build Android"
-build_add k  "build sgx_modules"
-build_add k  "build wl12xx_modules"
-build_add i  "build images" 		"Build (system/userdata/boot).img, and (root/system/userdata).tar.bz2"
-build_add f: "build_fastboot" 		"Fastboot partition image(s) (system, userdata, boot, or all)"
-build_add F  "format_device" 		"Format SD card"
-build_add B  "deploy build_out" 	"Deploy to build-out folder"
-build_add S  "deploy sd" 		"Deploy to SD card (copies to FAT and EXT2 partitions, and filters init.rc for mtd mounts)"
-build_add N  "deploy nand" 		'Deploy to SD card (copies over scripts for reflashing nand and appropriate images)"'
-build_add U  "deploy update_zip" 	'Deploy to update.zip (compatible with "fastboot update update.zip")'
-build_add Z  "deploy newer" 		'Deploy files that are newer than system.img and userdata.img by using "adb push"'
-build_add T  "deploy fastboot" 		'Build, and deploy kernel image on-demand over fastboot'
-build_add s  "shell"			'Spawn a shell'
-
+##
+# run_options
+#
+# Runs all the options parsed out by choose_options.
+##
 run_options()
 {
 #	setup_android_env
@@ -1061,6 +1372,34 @@ run_options()
 	return
 }
 
+##
+# build_add_default
+#
+# Adds default build options.
+##
+build_add_default()
+{
+	build_add K  "kernel_config"		'Run "make menuconfig" inside the kernel folder.'
+	build_add x  "build xloader" 		"Build X-Loader"
+	build_add u  "build uboot_no_env"
+	build_add u  "build uboot" 		"Build U-Boot"
+	build_add k  "build kernel" 		"Build Kernel"
+	build_add a  "build android" 		"Build Android"
+	build_add k  "build sgx_modules"
+	build_add k  "build wl12xx_modules"
+	build_add i  "build images" 		"Build (system/userdata/boot).img, and (root/system/userdata).tar.bz2"
+	build_add f: "build_fastboot" 		"Fastboot partition image(s) (system, userdata, boot, or all)"
+	build_add F  "format_device" 		"Format SD card"
+	build_add B  "deploy build_out" 	"Deploy to build-out folder"
+	build_add S  "deploy sd" 		"Deploy to SD card (copies to FAT and EXT2 partitions, and filters init.rc for mtd mounts)"
+	build_add N  "deploy nand" 		'Deploy to SD card (copies over scripts for reflashing nand and appropriate images)"'
+	build_add U  "deploy update_zip" 	'Deploy to update.zip (compatible with "fastboot update update.zip")'
+	build_add Z  "deploy newer" 		'Deploy files that are newer than system.img and userdata.img by using "adb push"'
+	build_add T  "deploy fastboot" 		'Build, and deploy kernel image on-demand over fastboot'
+	build_add s  "shell"			'Spawn a shell'
+}
+
+build_add_default
 setup_default_environment
 
 # Source the build_local.sh here so it has access to all environment stuff
