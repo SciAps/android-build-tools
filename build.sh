@@ -246,6 +246,36 @@ copy_function() {
 }
 
 ##
+# bytes_to_human_readable [size]
+#
+# Formats the argument [size] into human readable sizes.
+##
+bytes_to_human_readable()
+{
+	local spaces="     "
+	local prefix=" kMGTPE"
+	local val=$1
+	local pos=0
+	local precision=10
+	local divider=1024
+	local compare
+	local digits
+	local end
+
+	((val = val * precision))
+	((compare = divider * precision))
+	while [ ${val} -gt ${compare} ]
+	do
+		((pos++))
+		((val = val / divider))
+	done
+
+	digits=${#val}
+	((end=digits-${#precision}+1))
+	echo "${spaces:digits}${val::end}.${val:end}${prefix:pos:1}B"
+}
+
+##
 # find_removable_devices
 #
 # Echos to standard out a list of all devices available in the system
@@ -298,7 +328,11 @@ choose_removable_device()
 	do
 		for i in ${DEV_LIST}
 		do
-			echo "${i} is $((`cat /sys/class/block/${i}/size`*512)) bytes - `cat /sys/class/block/${i}/device/model`"
+			local size
+			size=$((`cat /sys/class/block/${i}/size`*512))
+			size=`bytes_to_human_readable ${size}`
+
+			echo "${i} is ${size} - `cat /sys/class/block/${i}/device/model`"
 		done
 
 		read -ep "Enter device: " DEV
