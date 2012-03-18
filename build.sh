@@ -132,8 +132,7 @@ format_device()
 	then
 		sudo -v
 		echo "Partitioning $DEV."
-	FATEND=7
-	sudo fdisk /dev/$DEV >/dev/null 2>&1 <<EOF
+		sudo fdisk /dev/$DEV >/dev/null 2>&1 <<EOF
 o
 x
 h
@@ -147,7 +146,7 @@ n
 p
 1
 
-$FATEND
++300M
 t
 c
 a
@@ -164,7 +163,7 @@ EOF
 		echo "[Making filesystems...]"
 
 		sudo mkfs.vfat -F 32 -n boot /dev/${DEV}1 > /dev/null 2>&1
-                sudo mkfs.ext3 -L rootfs /dev/${DEV}2 > /dev/null
+		sudo mkfs.ext3 -L rootfs /dev/${DEV}2 > /dev/null
 	else
 		exit 1
 	fi
