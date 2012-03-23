@@ -156,17 +156,17 @@ array_delete_index()
 	local cnt
 	local end
 
-        start=${2}
-        cnt=$(eval echo \${#"${1}"[*]})
-        end=$((cnt))
+	start=${2}
+	cnt=$(eval echo \${#"${1}"[*]})
+	end=$((cnt))
 
-        for((i=start;i<end;++i))
-        do
-                POS_CUR=$1'['$i']'
-                POS_NEXT='${'$1'['$((i+1))']}'
-                eval ${POS_CUR}=${POS_NEXT}
-        done
-        eval unset $1'['$((i-1))']'
+	for((i=start;i<end;++i))
+	do
+		POS_CUR=$1'['$i']'
+		POS_NEXT='${'$1'['$((i+1))']}'
+		eval ${POS_CUR}=${POS_NEXT}
+	done
+	eval unset $1'['$((i-1))']'
 }
 
 ##
@@ -182,17 +182,17 @@ array_insert_index()
 	local cnt
 	local end
 
-        start=${2}
-        cnt=$(eval echo \${#"${1}"[*]})
-        end=$((cnt))
+	start=${2}
+	cnt=$(eval echo \${#"${1}"[*]})
+	end=$((cnt))
 
-        for((i=end;i>=start;--i))
-        do
-                POS_CUR=$1'['$i']'
-                POS_NEXT='${'$1'['$((i-1))']}'
-                eval ${POS_CUR}=${POS_NEXT}
-        done
-        eval $1'['$((i+1))']'="${3}"
+	for((i=end;i>=start;--i))
+	do
+		POS_CUR=$1'['$i']'
+		POS_NEXT='${'$1'['$((i-1))']}'
+		eval ${POS_CUR}=${POS_NEXT}
+	done
+	eval $1'['$((i+1))']'="${3}"
 }
 
 ##
@@ -444,6 +444,9 @@ p
 
 w
 EOF
+		# Wait a little bit for devices to appear in /dev
+		sleep 2
+
 		find_device_partition part1 ${DEV} 1
 		find_device_partition part2 ${DEV} 2
 
