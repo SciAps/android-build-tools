@@ -969,14 +969,14 @@ build_kernel()
 		if [ ! -e ".config" ] 
 		then
 			echo "Using default kernel configuration."
-			make ${TARGET_KERNEL} -j${JOBS} && make zImage modules -j${JOBS}
+			make ${TARGET_KERNEL} -j${JOBS} && make uImage modules -j${JOBS}
 		else
 			echo "Using existing kernel configuration."
 			echo "To reset to default configuration, do:"
 			echo "  cd kernel"
 			echo "  ARCH=arm make ${TARGET_KERNEL}"
 			echo ""
-			make zImage modules -j${JOBS}
+			make uImage modules -j${JOBS}
 		fi
 		update_boot_img
 	else
