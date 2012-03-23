@@ -552,11 +552,14 @@ umount_all()
 		sync
 	fi
 
+	cd ${ROOT}
+
 	if [ ! "${MNT_BOOTLOADER}" == "" ]
 	then
 		echo "Unmounting bootloader partition"
 		sudo umount ${MNT_BOOTLOADER}
 		rmdir ${MNT_BOOTLOADER}
+		MNT_BOOTLOADER=
 	fi
 
 	if [ ! "${MNT_ROOT}" == "" ]
@@ -564,6 +567,7 @@ umount_all()
 		echo "Unmounting root partition"
 		sudo umount ${MNT_ROOT}
 		rmdir ${MNT_ROOT}
+		MNT_ROOT=
 	fi
 }
 
