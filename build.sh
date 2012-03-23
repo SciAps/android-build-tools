@@ -19,7 +19,8 @@ cd `dirname \`which -- $0\``
 ##
 mktemp_env_cleanup()
 {
-	[ ! "${#TMP_FILES[*]}" == "0" ] && rm -rf ${TMP_FILES[*]}
+	# Ensure any mount points are umounted before erasing files!
+	umount_all && [ ! "${#TMP_FILES[*]}" == "0" ] && rm -rf ${TMP_FILES[*]}
 }
 
 ##
