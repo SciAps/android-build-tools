@@ -277,26 +277,47 @@ bytes_to_human_readable()
 }
 
 ##
+# is_valid_removable_device [block name]
+#
+# Checks to see if a given removable device is valid (e.g. seems to be a SD type device)
+is_valid_removable_device()
+{
+	local capability
+
+	capability=0x0`cat /sys/block/$1/capability 2>/dev/null`
+
+	if (( (capability & 0x41) == 0x41 )) &&
+	   [ "`cat /sys/class/block/$1/size`" != "0" ]
+	then
+		return 0
+	fi
+	return 1
+}
+
+##
 # find_removable_devices
 #
 # Echos to standard out a list of all devices available in the system
 # that have the "removable" attribute.  Useful for finding SD cards.
+#
+# (Looks for GENHD_FL_EXT_DEVT and GENHD_FL_REMOVABLE
+#  in the capability file)
 ##
 find_removable_devices()
 {
-	local list1
 	local i
-	local list2
+	local dev
+	local capability
 
-	list1=`grep -x 1 /sys/class/block/*/removable | sed s/.*block\\\\/// | sed s/\\\\/removable.*//`
-	for i in ${list1}
+	for i in /sys/block/*
 	do
-		if [ "`cat /sys/class/block/$i/size`" != "0" ]
+		dev=`echo $i | awk -F / '{print $4}'`
+		if is_valid_removable_device ${dev}
 		then
-			list2+="${i} "
+			echo -en "${dev} "
 		fi
 	done
-	echo ${list2}
+	echo ""
 }
 
 ##
@@ -323,23 +344,28 @@ choose_removable_device()
 		history -s $i
 	done
 
-	grep -qx 1 /sys/class/block/${DEV}/removable 2>/dev/null && return
+	is_valid_removable_device ${DEV} && return
 
 	while true
 	do
+		echo Devices available:
 		for i in ${DEV_LIST}
 		do
 			local size
-			size=$((`cat /sys/class/block/${i}/size`*512))
+			size=$((`cat /sys/block/${i}/size`*512))
 			size=`bytes_to_human_readable ${size}`
 
-			echo "${i} is ${size} - `cat /sys/class/block/${i}/device/model`"
+			echo "  ${i} is ${size} - `cat /sys/block/${i}/device/model`"
 		done
 
 		read -ep "Enter device: " DEV
-		if grep -qx 1 /sys/class/block/${DEV}/removable 2>/dev/null
+		if is_valid_removable_device ${DEV}
 		then
-			sudo -v
+			if ! sudo -v -p "Enter %p's password, for SD manipulation permissions: "
+			then
+				echo "Cannot continue; you did not authenticate with sudo."
+				exit 1
+			fi
 			sleep 1
 			return 0
 		fi
@@ -358,9 +384,9 @@ find_device_partition()
 {
 	local find_part
 	local I
-	for I in /sys/class/block/$2/*/partition
+	for I in /sys/block/$2/*/partition
 	do
-		find_part=`echo $I | awk -F / '{print $6}'`
+		find_part=`echo $I | awk -F / '{print $5}'`
 		if echo ${find_part} | grep -q "[^0123456789]$3\$"
 		then
 			eval $1=${find_part}
