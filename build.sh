@@ -447,8 +447,10 @@ EOF
 		find_device_partition part1 ${DEV} 1
 		find_device_partition part2 ${DEV} 2
 
+		echo "Formatting SD card."
+
 		sudo mkfs.vfat -F 32 -n boot /dev/${part1} > /dev/null 2>&1
-		sudo mkfs.ext3 -L rootfs /dev/${part2} > /dev/null
+		sudo mkfs.ext3 -L rootfs /dev/${part2} > /dev/null 2>&1
 	else
 		exit 1
 	fi
