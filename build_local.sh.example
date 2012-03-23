@@ -1,0 +1,43 @@
+# General configuration
+TARGET_UBOOT=omap4430logic
+TARGET_XLOADER=${TARGET_UBOOT}
+TARGET_ANDROID=full_blaze-eng
+TARGET_KERNEL=omap4torpedo_defconfig
+
+# The following come from u-boot/include/config.mk
+UBOOT_BOARD=logic
+UBOOT_VENDOR=ti
+UBOOT_SOC=omap3
+
+UBOOT_ARCH=arm
+UBOOT_CPU=omap4
+UBOOT_BOARD=omap4430logic
+
+unset uboot_check_config
+
+uboot_check_config()
+{
+	local ARCH
+	local CPU
+	local BOARD
+
+	ARCH=`cat include/config.mk 2>/dev/null | awk '/ARCH/ {print $3}'`
+	CPU=`cat include/config.mk 2>/dev/null | awk '/CPU/ {print $3}'`
+	BOARD=`cat include/config.mk 2>/dev/null | awk '/BOARD/ {print $3}'`
+        
+	# If the configuration isn't set, set it.
+	if [ ! "$UBOOT_ARCH"  == "$ARCH" ] ||
+	   [ ! "$UBOOT_CPU"   == "$CPU" ] ||
+	   [ ! "$UBOOT_BOARD" == "$BOARD" ]
+	then
+		make ${TARGET_UBOOT}_config
+	fi
+}
+
+# We don't want the standard formula for the wl12xx_modules,
+# or sgx modules for the OMAP4 platform (nor build_out).
+build_del k "build wl12xx_modules"
+build_del k "build sgx_modules"
+build_del B "deploy build_out"
+
+export BOOTLOADER_PATH=${KERNEL_PATH}
