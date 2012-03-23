@@ -513,6 +513,13 @@ build_info()
 ##
 umount_all()
 {
+	if [ ! "${MNT_BOOTLOADER}" == "" ] ||
+	   [ ! "${MNT_ROOT}" == "" ]
+	then
+		echo "Flushing data to SD card"
+		sync
+	fi
+
 	if [ ! "${MNT_BOOTLOADER}" == "" ]
 	then
 		echo "Unmounting bootloader partition"
@@ -698,8 +705,12 @@ deploy_sd()
 	sudo cp ${TMP_INIT} init.rc
 	rm ${TMP_INIT}
 
-	cd ${ROOT}
-	umount_all
+	if umount_all
+	then
+		echo "Image deployed. SD card can be removed."
+	else
+		echo "Image deployment failed!"
+	fi
 }
 
 ##
@@ -734,7 +745,13 @@ deploy_nand()
 	rm -Rf ${MNT_BOOTLOADER}/update
 	mkdir -p ${MNT_BOOTLOADER}/update
 	copy_reflash_nand_sd ${MNT_BOOTLOADER}/
-	umount_all
+
+	if umount_all
+	then
+		echo "Image deployed. SD card can be removed."
+	else
+		echo "Image deployment failed!"
+	fi
 }
 
 ##
