@@ -375,6 +375,7 @@ choose_removable_device()
 		read -ep "Enter device: " DEV
 		if is_valid_removable_device ${DEV}
 		then
+			sudo -v -p "Enter %p's password, for SD manipulation permissions: "
 			if ! sudo -v -p "Enter %p's password, for SD manipulation permissions: "
 			then
 				echo "Cannot continue; you did not authenticate with sudo."
@@ -607,6 +608,7 @@ check_component()
 ##
 copy_reflash_nand_sd()
 {
+	echo "Copying reflash nand SD components."
 	setup_android_env
 	cd ${ROOT}
 	mkdir -p $1/update
@@ -696,6 +698,22 @@ deploy_build_out()
 	LINK=-l copy_update_cache build-out/update_cache/
 }
 
+deploy_sd_unmount_all_and_check()
+{
+	if umount_all
+	then
+		if cat /proc/mounts | grep -q ${DEV}
+		then
+			echo "Image deployed, but \033[1mthe SD card is mounted by the system.\033[0m"
+			echo "Please safely remove your SD card."
+		else
+			echo "Image deployed. SD card can be removed."
+		fi
+	else
+		echo "Image deployment failed!"
+	fi
+}
+
 ##
 # deploy_sd
 #
@@ -751,16 +769,11 @@ deploy_sd()
 
 	echo Filtering init.rc for mtd mount commands
 	mktemp_env TMP_INIT
-	sudo cat init.rc | grep -v mtd > ${TMP_INIT}
+	sudo cat init.rc | egrep -v 'mount.*(mtd@|rootfs.*remount)' > ${TMP_INIT}
 	sudo cp ${TMP_INIT} init.rc
 	rm ${TMP_INIT}
 
-	if umount_all
-	then
-		echo "Image deployed. SD card can be removed."
-	else
-		echo "Image deployment failed!"
-	fi
+	deploy_sd_unmount_all_and_check
 }
 
 ##
@@ -796,12 +809,7 @@ deploy_nand()
 	mkdir -p ${MNT_BOOTLOADER}/update
 	copy_reflash_nand_sd ${MNT_BOOTLOADER}/
 
-	if umount_all
-	then
-		echo "Image deployed. SD card can be removed."
-	else
-		echo "Image deployment failed!"
-	fi
+	deploy_sd_unmount_all_and_check
 }
 
 ##
