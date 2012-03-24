@@ -15,6 +15,20 @@ SELF=`which -- $0`
 cd `dirname \`which -- $0\``
 
 ##
+# generic_error
+#
+# Generic error handler - it receives _ALL_ unhandled command errors.
+##
+generic_error()
+{
+        LINE=`caller | awk '{print $1}'`
+        FILE=`caller | awk '{print $2}'`
+        echo "\033[1mUnhandled error executing:\033[0m ${BASH_COMMAND}"
+        echo "(Error at line ${LINE} in ${FILE})"
+        exit 1
+}
+
+##
 # Cleans up all tmp files created by mktemp_env
 ##
 mktemp_env_cleanup()
@@ -353,7 +367,7 @@ choose_removable_device()
 		do
 			local size
 			size=$((`cat /sys/block/${i}/size`*512))
-			size=`bytes_to_human_readable ${size}`
+			size=`bytes_to_human_readable ${size}` || true
 
 			echo "  ${i} is ${size} - `cat /sys/block/${i}/device/model`"
 		done
@@ -1500,4 +1514,8 @@ fi
 setup_android_env
 check_environment
 choose_options "${@}"
+
+trap generic_error ERR
+set -E
+
 run_options
