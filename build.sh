@@ -23,8 +23,8 @@ generic_error()
 {
         LINE=`caller | awk '{print $1}'`
         FILE=`caller | awk '{print $2}'`
-        echo "\033[1mUnhandled error executing:\033[0m ${BASH_COMMAND}"
-        echo "(Error at line ${LINE} in ${FILE})"
+        echo -e "\033[1mUnhandled error executing:\033[0m ${BASH_COMMAND}"
+        echo -e "(Error at line ${LINE} in ${FILE})"
         exit 1
 }
 
