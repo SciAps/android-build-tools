@@ -309,10 +309,11 @@ is_valid_removable_device()
 }
 
 ##
-# find_removable_devices
+# find_removable_devices [environment variable]
 #
-# Echos to standard out a list of all devices available in the system
-# that have the "removable" attribute.  Useful for finding SD cards.
+# Sets the environment variable to the list of all devices available
+# in the systemthat have the "removable" attribute.  Useful for 
+# finding SD cards.
 #
 # (Looks for GENHD_FL_EXT_DEVT and GENHD_FL_REMOVABLE
 #  in the capability file)
@@ -322,16 +323,17 @@ find_removable_devices()
 	local i
 	local dev
 	local capability
+	local cnt=0
 
 	for i in /sys/block/*
 	do
 		dev=`echo $i | awk -F / '{print $4}'`
 		if is_valid_removable_device ${dev}
 		then
-			echo -en "${dev} "
+			eval $1[$cnt]=${dev}
+			((cnt++)) || true
 		fi
 	done
-	echo ""
 }
 
 ##
@@ -342,28 +344,42 @@ find_removable_devices()
 ##
 choose_removable_device()
 {
-	local DEV_LIST
+	local DEV_LIST[0]
 	local i
 
-	DEV_LIST=`find_removable_devices`
+	if is_valid_removable_device ${DEV}
+	then
+		return 0
+	fi
 
-	# The following hack for TAB completion is from
-	# http://www.linuxquestions.org/questions/linux-general-1/commandline-autocompletion-for-my-shell-script-668388/
-	set -o emacs
-	bind 'set show-all-if-ambiguous on'
-	bind 'set completion-ignore-case on'
-	COMP_WORDBREAKS=${COMP_WORDBREAKS//:}
-	bind 'TAB:dynamic-complete-history'
-	for i in ${DEV_LIST} ; do
-		history -s $i
-	done
-
-	is_valid_removable_device ${DEV} && return
+	if [ ! "${DEV}" == "" ]
+	then
+		echo "Overriding invalid device selection ${DEV}"
+	fi
 
 	while true
 	do
+		find_removable_devices DEV_LIST
+
+		if [ "${#DEV_LIST[*]}" == "0" ]
+		then
+			echo "Error: No possible SD devices found on system."
+			return 1
+		fi
+
+		# The following hack for TAB completion is from
+		# http://www.linuxquestions.org/questions/linux-general-1/commandline-autocompletion-for-my-shell-script-668388/
+		set -o emacs
+		bind 'set show-all-if-ambiguous on'
+		bind 'set completion-ignore-case on'
+		COMP_WORDBREAKS=${COMP_WORDBREAKS//:}
+		bind 'TAB:dynamic-complete-history'
+		for i in ${DEV_LIST[*]} ; do
+			history -s $i
+		done
+
 		echo Devices available:
-		for i in ${DEV_LIST}
+		for i in ${DEV_LIST[*]}
 		do
 			local size
 			size=$((`cat /sys/block/${i}/size`*512))
@@ -375,17 +391,17 @@ choose_removable_device()
 		read -ep "Enter device: " DEV
 		if is_valid_removable_device ${DEV}
 		then
-			sudo -v -p "Enter %p's password, for SD manipulation permissions: "
 			if ! sudo -v -p "Enter %p's password, for SD manipulation permissions: "
 			then
 				echo "Cannot continue; you did not authenticate with sudo."
-				exit 1
+				return 1
 			fi
 			sleep 1
+			echo
 			return 0
 		fi
 		echo "Enter a valid device."
-		echo "You can choose one of ${DEV_LIST}"
+		echo "You can choose one of ${DEV_LIST[*]}"
 	done
 }
 
@@ -444,6 +460,7 @@ format_device()
 	local answer
 	local part1
 	local part2
+	local size
 
 	choose_removable_device
 
@@ -452,8 +469,10 @@ format_device()
 
 	# Run FDISK
 
-	echo "Setting up $DEV"
-	echo
+	size=$((`cat /sys/block/${DEV}/size`*512))
+	size=`bytes_to_human_readable ${size}` || true
+
+	echo "About to erase and format $DEV (${size} - `cat /sys/block/${DEV}/device/model`)"
 	echo -n "Do you wish to continue? (y/N) "
 	read answer
 	if [ "${answer^*}" == "Y" ]
@@ -1350,6 +1369,7 @@ EOF
   -c       Clean object files
 
  Misc options:
+  -D [dev] Specify a device, such as "sdb" to use for SD deployment options
 EOF
 	print_help_match_cmd ""
 
@@ -1387,7 +1407,7 @@ build_all()
 choose_options()
 {
 	local count=
-	local availopts=Aj:cvh?
+	local availopts=Aj:cvh?D:
 
 	for ((i=0;i<${#BUILD_OPTION[*]};++i))
 	do
@@ -1402,6 +1422,7 @@ choose_options()
 		eval count=$((count+1))
 		case $name in
 			A) build_all;Bflag=1;;
+			D) DEV="$OPTARG";;
 			j) JOBS="$OPTARG";;
 			c) CLEAN=1;;
 			v) VERBOSE=1;;
