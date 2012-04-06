@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #############################################################
 # This file should remain untouched for local changes       #
@@ -1254,7 +1254,7 @@ build()
 		time (
 			trap build_error ERR
 			set -E
-			build_$1 > ${TMP} 2>&1
+			build_$1 &> ${TMP}
 		     ) 2> ${TIME}
 		[ ! "$?" == "0" ] && ERR=1
 		trap generic_error ERR
@@ -1370,23 +1370,24 @@ print_help_match_cmd()
 ##
 print_help()
 {
-	cat <<EOF
-Usage: $0:
- Targets:
-  -A       Build all, and deploy to build-out
-EOF
+	cat <<-EOF
+		Usage: $0:
+		 Targets:
+		  -A       Build all, and deploy to build-out
+	EOF
 	print_help_match_cmd "build "
 	echo -e "\n Deployment options:"
 	print_help_match_cmd "deploy "
-	cat <<EOF
+	cat <<-EOF
+		
+		 Job options:
+		  -j [num] How many simultaneous compiles to run (currently ${JOBS})
+		  -c       Clean object files
+	
+		 Misc options:
+		  -D [dev] Specify a device, such as "sdb" to use for SD deployment options
+	EOF
 
- Job options:
-  -j [num] How many simultaneous compiles to run (currently ${JOBS})
-  -c       Clean object files
-
- Misc options:
-  -D [dev] Specify a device, such as "sdb" to use for SD deployment options
-EOF
 	print_help_match_cmd ""
 
 	exit 2
