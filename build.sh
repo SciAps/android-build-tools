@@ -1236,11 +1236,29 @@ build()
 	if [ "${VERBOSE}" == "1" ]
 	then
 		echo ""
-		time ( trap build_error ERR;set -E;build_$1 ${*:2} 2>&1 | tee ${TMP} ; [ "${PIPESTATUS[0]}" == "0" ] || false; ) 2> ${TIME} 3>&1 || ERR=1
+		set +E
+		trap - ERR
+		time (
+			trap build_error ERR
+			set -E
+			build_$1 2>&1 | tee ${TMP}
+		     ) 2> ${TIME}
+		[ ! "$?" == "0" ] && ERR=1
 		echo -en "Finished ${VERB_ACTIVE} ${NAME} - "
+		trap generic_error ERR
+		set -E
 	else
 		echo -en " - "
-		time ( trap build_error ERR;set -E;build_$1 ${*:2} > $TMP 2>&1) 2> ${TIME} 3>&1 || ERR=1
+		set +E
+		trap - ERR
+		time (
+			trap build_error ERR
+			set -E
+			build_$1 > ${TMP} 2>&1
+		     ) 2> ${TIME}
+		[ ! "$?" == "0" ] && ERR=1
+		trap generic_error ERR
+		set -E
 	fi
 
 	if [ "$ERR" != "0" ]
