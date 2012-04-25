@@ -9,10 +9,16 @@
 # See function check_environment() for required definitions #
 #############################################################
 
+if echo $- | grep -q i
+then
+	echo 'Do not source the build script!'
+	return
+fi
+
 SELF=`which -- $0`
 
 # Normalize the path to the folder build.sh is located in.
-cd `dirname \`which -- $0\``
+cd $(readlink -f $(dirname $(which -- $SELF)))
 
 ##
 # generic_error
@@ -85,9 +91,9 @@ setup_android_env()
 			echo lunch ${TARGET_ANDROID}
 			lunch ${TARGET_ANDROID}
 			export `cat ${ROOT}/build/core/version_defaults.mk | grep PLATFORM_VERSION[^_].*= | tr -d ': '`
-			export > ${UPT}
+			declare -x > ${UPT}
 
-			diff  --left-column ${TMP} ${UPT} | grep '^> ' | sed 's/^> //' | grep -v 'export PATH=' > .cached_android_env
+			diff  --left-column ${TMP} ${UPT} | grep '^> ' | sed 's/^> //' | grep -v '^declare -x PATH=' | sed 's/^declare -x /export /' > .cached_android_env
 			rm -f ${UPT} ${TMP}
 		) > /dev/null
 
@@ -723,7 +729,7 @@ deploy_sd_unmount_all_and_check()
 	then
 		if cat /proc/mounts | grep -q ${DEV}
 		then
-			echo "Image deployed, but \033[1mthe SD card is mounted by the system.\033[0m"
+			echo -e "Image deployed, but \033[1mthe SD card is mounted by the system.\033[0m"
 			echo "Please safely remove your SD card."
 		else
 			echo "Image deployed. SD card can be removed."
@@ -1238,11 +1244,13 @@ build()
 		echo ""
 		set +E
 		trap - ERR
-		time (
+		time ((
 			trap build_error ERR
 			set -E
-			build_$1 2>&1 | tee ${TMP}
-		     ) 2> ${TIME}
+			build_$1 2>&1
+		      ) | tee ${TMP}
+		      [ "${PIPESTATUS[0]}" == "0" ] || false
+		     ) 2>${TIME}
 		[ ! "$?" == "0" ] && ERR=1
 		echo -en "Finished ${VERB_ACTIVE} ${NAME} - "
 		trap generic_error ERR
