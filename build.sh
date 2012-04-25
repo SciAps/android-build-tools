@@ -35,6 +35,21 @@ generic_error()
 }
 
 ##
+# Checks ot see if mkimage is installed
+#
+##
+check_mkimage()
+{
+	if ! which mkimage &>/dev/null
+	then
+		echo "Missing tool mkimage!"
+		echo "Please install package u-boot-tools (Ubuntu) for mkimage."
+		echo "    sudo apt-get install u-boot-tools"
+		exit 1
+	fi
+}
+
+##
 # Cleans up all tmp files created by mktemp_env
 ##
 mktemp_env_cleanup()
@@ -662,6 +677,8 @@ copy_reflash_nand_sd()
 ##
 copy_update_cache()
 {
+	check_mkimage
+
 	setup_android_env
 	cd ${ROOT}
 
@@ -747,6 +764,8 @@ deploy_sd_unmount_all_and_check()
 ##
 deploy_sd()
 {
+	check_mkimage
+
 	local TMP_INIT
 
 	if [ "$CLEAN" == "1" ]
@@ -894,6 +913,8 @@ deploy_newer()
 ##
 update_boot_img()
 {
+	check_mkimage
+
 	if [ -e "${PATH_TO_KERNEL}/arch/arm/boot/zImage" ] &&
 	   [ -e "${ANDROID_PRODUCT_OUT}/ramdisk.img" ]
 	then
@@ -1564,6 +1585,12 @@ if [ -e "${HOME}/.logicpd/android_build" ]
 then
 	source ${HOME}/.logicpd/android_build
 fi
+
+# Amend paths to have uboot tools in them.
+BOOTLOADER_PATH=${PATH_TO_UBOOT}/tools:${BOOTLOADER_PATH}
+KERNEL_PATH=${PATH_TO_UBOOT}/tools:${KERNEL_PATH}
+ORIG_PATH=${PATH_TO_UBOOT}/tools:${ORIG_PATH}
+PATH=${PATH_TO_UBOOT}/tools:${PATH}
 
 setup_android_env
 check_environment
