@@ -114,6 +114,8 @@ setup_android_env()
 
 		source ${ROOT}/.cached_android_env
 		export PATH=${PATH}${ANDROID_BUILD_PATHS}
+	else
+		source ${ROOT}/.cached_android_env
 	fi
 }
 
