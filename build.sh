@@ -82,39 +82,35 @@ mktemp_env()
 ##
 setup_android_env()
 {
-	if [ "${TARGET_PRODUCT}" == "" ]
+	# check to make sure none of the contributing files are newer
+	if [ -e "${ROOT}/.cached_android_env" ] &&
+	   [ "${ROOT}/.cached_android_env" -nt "${SELF}" ] &&
+	   [ "${ROOT}/.cached_android_env" -nt "build-tools/build_local.sh" ] &&
+	   [ "${ROOT}/.cached_android_env" -nt "${HOME}/.logicpd/android_build" ]
 	then
-		# check to make sure none of the contributing files are newer
-		if [ -e "${ROOT}/.cached_android_env" ] &&
-		   [ "${ROOT}/.cached_android_env" -nt "${SELF}" ] &&
-		   [ "${ROOT}/.cached_android_env" -nt "build-tools/build_local.sh" ] &&
-		   [ "${ROOT}/.cached_android_env" -nt "${HOME}/.logicpd/android_build" ]
-		then
-			source ${ROOT}/.cached_android_env
-			export PATH=${PATH}${ANDROID_BUILD_PATHS}
-			return
-		fi
-
-		echo "Updating Android build environment cache"
-
-		(
-			mktemp_env TMP
-			mktemp_env UPT
-
-			export > ${TMP}
-			. build/envsetup.sh
-			echo lunch ${TARGET_ANDROID}
-			lunch ${TARGET_ANDROID}
-			export `cat ${ROOT}/build/core/version_defaults.mk | grep PLATFORM_VERSION[^_].*= | tr -d ': '`
-			declare -x > ${UPT}
-
-			diff  --left-column ${TMP} ${UPT} | grep '^> ' | sed 's/^> //' | grep -v '^declare -x PATH=' | sed 's/^declare -x /export /' > .cached_android_env
-			rm -f ${UPT} ${TMP}
-		) > /dev/null
-
 		source ${ROOT}/.cached_android_env
 		export PATH=${PATH}${ANDROID_BUILD_PATHS}
+		return
 	fi
+
+	echo "Updating Android build environment cache"
+	(
+		mktemp_env TMP
+		mktemp_env UPT
+
+		export > ${TMP}
+		. build/envsetup.sh
+		echo lunch ${TARGET_ANDROID}
+		lunch ${TARGET_ANDROID}
+		export `cat ${ROOT}/build/core/version_defaults.mk | grep PLATFORM_VERSION[^_].*= | tr -d ': '`
+		declare -x > ${UPT}
+
+		diff  --left-column ${TMP} ${UPT} | grep '^> ' | sed 's/^> //' | grep -v '^declare -x PATH=' | sed 's/^declare -x /export /' > .cached_android_env
+		rm -f ${UPT} ${TMP}
+	) > /dev/null
+
+	source ${ROOT}/.cached_android_env
+	export PATH=${PATH}${ANDROID_BUILD_PATHS}
 }
 
 if [ ! -e "build-tools/build_local.sh" ]
@@ -649,7 +645,6 @@ check_component()
 copy_reflash_nand_sd()
 {
 	echo "Copying reflash nand SD components."
-	setup_android_env
 	cd ${ROOT}
 	mkdir -p $1/update
 
@@ -675,9 +670,7 @@ copy_update_cache()
 {
 	check_mkimage
 
-	setup_android_env
 	cd ${ROOT}
-
 	mkdir -p $1
 
 	cp ${LINK} ${PATH_TO_UBOOT}/u-boot.bin.ift                              $1
@@ -705,7 +698,6 @@ deploy_build_out()
 		return 0
 	fi
 
-	setup_android_env
 	cd ${ROOT}
 
 	# Check necessary files.
@@ -770,7 +762,6 @@ deploy_sd()
 		return 0
 	fi
 
-	setup_android_env
 	cd ${ROOT}
 
 	# Check necessary files.
@@ -831,7 +822,6 @@ deploy_nand()
 		return 0
 	fi
 
-	setup_android_env
 	cd ${ROOT}
 
 	# Check necessary files.
@@ -863,8 +853,6 @@ deploy_nand()
 ##
 deploy_update_zip()
 {
-	setup_android_env
-
 	if [ "$CLEAN" == "1" ]
 	then
 		echo "Removing update.zip"
@@ -896,7 +884,6 @@ deploy_newer()
 		echo "Nothing to be done for clean with deploy newer."
 	fi
 
-	setup_android_env
 	cd ${ANDROID_PRODUCT_OUT}
 	find system -type f -newer system.img   -print -exec adb push '{}' /'{}' ';'
 	find data   -type f -newer userdata.img -print -exec adb push '{}' /'{}' ';'
@@ -928,7 +915,6 @@ update_boot_img()
 ##
 build_android()
 {
-	setup_android_env
 	cd ${ROOT}
 
 	if [ "$CLEAN" == "0" ]
@@ -1053,8 +1039,6 @@ build_kernel()
 {
 	local PATH
 
-	setup_android_env
-
 	cd ${PATH_TO_KERNEL}
 	PATH=${KERNEL_PATH}
 
@@ -1091,7 +1075,6 @@ build_sub_module()
 	local PATH
 
 	cd ${ROOT}
-	setup_android_env
 	CMD="make -C $* ANDROID_ROOT_DIR=${ROOT} -j${JOBS}"
 	PATH=${KERNEL_PATH}
 
@@ -1113,8 +1096,6 @@ build_sub_module()
 build_sgx_modules()
 {
 	local TARGET_ROOT
-
-	setup_android_env
 
 	if [ "$CLEAN" == "0" ] && 
            [ ! -e "${ANDROID_PRODUCT_OUT}/obj/lib/crtbegin_dynamic.o" ]
@@ -1152,8 +1133,6 @@ build_wl12xx_modules()
 ##
 build_images()
 {
-	setup_android_env
-
 	# Remove old, stale image files.
 	rm -f `find out -iname system.img`
 	rm -f `find out -iname system.tar.bz2`
@@ -1194,12 +1173,8 @@ build_images()
 ##
 build_fastboot()
 {
-	setup_android_env
-
 	if [ "$1" == "all" ]
 	then
-		setup_android_env
-
 		fastboot flash boot
 		fastboot flash system
 		fastboot flash userdata
@@ -1321,8 +1296,6 @@ deploy_fastboot()
 		return 0
 	fi
 
-	setup_android_env
-	
 	while true
 	do
 		echo "Waiting for device"
@@ -1501,7 +1474,6 @@ shell()
 {
 	export BOOTLOADER_PATH
 	export KERNEL_PATH
-	setup_android_env
 	
 	exec ${SHELL} --rcfile build/envsetup.sh
 	exit 0
@@ -1525,8 +1497,6 @@ kernel_config()
 ##
 run_options()
 {
-#	setup_android_env
-
 	for ((i=0;i<${#BUILD_OPTION[*]};++i))
 	do
 		OPT=`eval echo $"${BUILD_OPTION[i]}"`
