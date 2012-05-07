@@ -682,9 +682,9 @@ copy_update_cache()
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/boot.img                              $1/uMulti-Image
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/system.img                            $1
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/userdata.img                          $1
-	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Update Script" \
-		-d build-tools/remote_update_info/updatescr.txt \
-		$1/updatescr.upt > /dev/null 2>&1
+#	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Update Script" \
+#		-d device/logicpd/${TARGET_PRODUCT}/updatescr.cmd \
+#		${1}/updatescr.upt > /dev/null 2>&1
 }
 
 ##
