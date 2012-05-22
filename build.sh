@@ -464,8 +464,8 @@ unmount_device()
 	MNT_POINTS=`cat /proc/mounts | grep $DEV | awk '{print $2}'`
 	for I in ${MNT_POINTS}
 	do
-		echo "Unmounting ${I}"
-		sudo umount ${I} || return 1
+		echo -e "Unmounting ${I}"
+		sudo umount "`echo -e ${I}`" || return 1
 	done
 }
 
