@@ -15,6 +15,10 @@ then
 	return
 fi
 
+# Query distribution information
+DISTRIB_ID=`lsb_release -i | sed 's/^[^:]*:[[:blank:]]*//'`
+DISTRIB_RELEASE=`lsb_release -r | sed 's/^[^:]*:[[:blank:]]*//'`
+
 SELF=`which -- $0`
 
 # Normalize the path to the folder build.sh is located in.
@@ -40,11 +44,30 @@ generic_error()
 ##
 check_mkimage()
 {
+	local pkg
 	if ! which mkimage &>/dev/null
 	then
 		echo "Missing tool mkimage!"
-		echo "Please install package u-boot-tools (Ubuntu) for mkimage."
-		echo "    sudo apt-get install u-boot-tools"
+		case ${DISTRIB_ID} in
+			Ubuntu)
+				case ${DISTRIB_RELEASE} in
+					10.*) pkg=uboot-mkimage;;
+					11.*) pkg=u-boot-tools;;
+					12.*) pkg=u-boot-tools;;
+					*) pkg=uboot-mkimage/u-boot-tools;;
+				esac
+				echo "Please install package ${pkg} for mkimage"
+				echo "    sudo apt-get install ${pkg}"
+				;;
+			Gentoo)
+				echo "Please install package u-boot-tools for mkimage"
+				echo "    sudo emerge -av u-boot-tools"
+				;;
+			*)
+				echo "Please install whatever package your distribution has"
+				echo "for the utility make image.  It may be called u-boot-tools."
+				;;
+		esac
 		exit 1
 	fi
 }
