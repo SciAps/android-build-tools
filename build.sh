@@ -109,7 +109,8 @@ setup_android_env()
 	if [ -e "${ROOT}/.cached_android_env" ] &&
 	   [ "${ROOT}/.cached_android_env" -nt "${SELF}" ] &&
 	   [ "${ROOT}/.cached_android_env" -nt "build-tools/build_local.sh" ] &&
-	   [ "${ROOT}/.cached_android_env" -nt "${HOME}/.logicpd/android_build" ]
+	   [ "${ROOT}/.cached_android_env" -nt "${HOME}/.logicpd/android_build" ] ||
+	   [ ! -e "${ROOT}/build/envsetup.sh" ]
 	then
 		source ${ROOT}/.cached_android_env
 		export PATH=${PATH}${ANDROID_BUILD_PATHS}
@@ -120,15 +121,21 @@ setup_android_env()
 	(
 		mktemp_env TMP
 		mktemp_env UPT
+		REGEX_CLEAN_ROOT=`echo -en "${ROOT}" | sed -re 's/(]|[[\\\/.+*?{\(\)\|\^])/\\\\\1/g'`
 
 		export > ${TMP}
 		. build/envsetup.sh
 		echo lunch ${TARGET_ANDROID}
 		lunch ${TARGET_ANDROID}
 		export `cat ${ROOT}/build/core/version_defaults.mk | grep PLATFORM_VERSION[^_].*= | tr -d ': '`
-		declare -x > ${UPT}
+		declare -x | sed -re 's|"('${REGEX_CLEAN_ROOT}')|"${ROOT}|g' > ${UPT}
 
-		diff  --left-column ${TMP} ${UPT} | grep '^> ' | sed 's/^> //' | grep -v '^declare -x PATH=' | sed 's/^declare -x /export /' > .cached_android_env
+		diff  --left-column ${TMP} ${UPT} |
+			grep '^> ' |
+			sed 's/^> //' |
+			grep -v '^declare -x PATH=' |
+			sed 's/^declare -x /export /' |
+			sed -re 's|:('${REGEX_CLEAN_ROOT}')|:${ROOT}|g' > .cached_android_env
 		rm -f ${UPT} ${TMP}
 	) > /dev/null
 
@@ -653,11 +660,90 @@ umount_all()
 ##
 check_component()
 {
-	if [ ! -e ${1} ]
+	if [ ! -e "${1}" ]
 	then
 		echo "Missing \"${1}\"! Cannot continue."
 		exit 1
 	fi
+	if [ "${CHECKING_COMPONENTS}" == "1" ]
+	then
+		if [ ! "${1:0:1}" == "/" ]
+		then
+			echo -en "${ROOT}" 1>&4
+		fi
+		echo "${1}" 1>&4
+	fi
+}
+
+finished_checking_components()
+{
+	if [ "${CHECKING_COMPONENTS}" == "1" ]
+	then
+		exit 255
+	fi
+}
+
+##
+# create_release
+#
+#
+##
+create_release()
+{
+	local i
+	local match="deploy "
+	local files=( )
+	local components
+	local components_sorted
+	local tmp
+	local NAME
+	local REL_NAME
+	local REGEX_CLEAN_ROOT
+	local REGEX_CLEAN_NAME
+	local MD5
+	mktemp_env components
+	mktemp_env components_sorted
+
+	for ((i=0;i<${#BUILD_OPTION[*]};++i))
+	do
+		tmp=${BUILD_COMMAND[i]}
+		tmp=${tmp:0:${#match}}
+
+		if [ "${tmp}" == "${match}" ]
+		then
+			local cmd=`echo ${BUILD_COMMAND[i]} | sed 's/deploy /deploy_/'`
+			((CHECKING_COMPONENTS=1 ${cmd} 4>&1 &>/dev/null) || echo -en) >> ${components}
+		fi
+	done
+
+	# Create a script for the generating the files in element form, and source it
+	cat ${components} | sort -u | awk '{print "files[${#files[@]}]=\"" $0 "\""}' > ${components_sorted}
+	. ${components_sorted}
+
+	REGEX_CLEAN_ROOT=`echo -en "${ROOT}" | sed -re 's/(]|[[\\\/.+*?{\(\)\|\^])/\\\\\1/g'`
+	NAME=`date +Release_%Y%m%d`
+	REGEX_CLEAN_NAME=`echo -en "${NAME}" | sed -re 's/(]|[[\\\/.+*?{\(\)\|\^])/\\\\\1/g'`
+
+	for((i=0;i<${#files[@]};++i))
+	do
+		files[i]=`echo ${files[i]} | sed -re 's|^('${REGEX_CLEAN_ROOT}')/*|'${REGEX_CLEAN_NAME}'/|g'`
+	done
+
+	echo "Creating release"
+	echo -n " - Generating tarball"
+	cd ${ROOT}
+	rm -f ${NAME};ln -fs . ${NAME}
+	tar chf ${NAME}.tar "${files[@]}" ${NAME}/build-tools/ ${NAME}/build.sh ${NAME}/.cached_android_env --exclude \.git
+	rm -f ${NAME};mkdir ${NAME}
+	repo manifest -r -o ${NAME}/manifest.xml &>/dev/null
+	tar -p -rf ${NAME}.tar ${NAME}/manifest.xml
+	MD5=`md5sum ${NAME}/manifest.xml`
+	REL_NAME=${NAME}_`echo $MD5 | head -c 8`
+	rm -Rf ${NAME}
+
+	mkdir -p releases
+	mv ${NAME}.tar releases/${REL_NAME}.tar
+	echo -en "\n - Release posted to releases/${REL_NAME}.tar\n"
 }
 
 ##
@@ -726,10 +812,16 @@ deploy_build_out()
 	# Check necessary files.
 	check_component ${PATH_TO_XLOADER}/x-load.bin.ift
 	check_component ${PATH_TO_UBOOT}/u-boot.bin
+	check_component ${PATH_TO_UBOOT}/u-boot.bin.ift
 	check_component ${PATH_TO_UBOOT}/u-boot-no-environ_bin
 	check_component ${ANDROID_PRODUCT_OUT}/boot.img
 	check_component ${ANDROID_PRODUCT_OUT}/system.img
 	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
+	check_component ${ROOT}/device/logicpd/${TARGET_PRODUCT}/android.bmp
+	check_component ${ROOT}/device/logicpd/${TARGET_PRODUCT}/android2.bmp
+	check_component ${ROOT}/device/logicpd/${TARGET_PRODUCT}/done.bmp
+	check_component device/logicpd/${TARGET_PRODUCT}/reflash_nand.cmd
+	finished_checking_components
 	
 	mkdir -p build-out/reflash_nand_sd/update
 	mkdir -p build-out/update_cache
@@ -794,6 +886,8 @@ deploy_sd()
 	check_component ${ANDROID_PRODUCT_OUT}/root.tar.bz2
 	check_component ${ANDROID_PRODUCT_OUT}/system.tar.bz2
 	check_component ${ANDROID_PRODUCT_OUT}/userdata.tar.bz2
+	check_component ${ROOT}/device/logicpd/${TARGET_PRODUCT}/boot_sd.cmd
+	finished_checking_components
 
 	mount_bootloader
 	mount_root
@@ -854,6 +948,7 @@ deploy_nand()
 	check_component ${ANDROID_PRODUCT_OUT}/boot.img
 	check_component ${ANDROID_PRODUCT_OUT}/system.img
 	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
+	finished_checking_components
 
 	mount_bootloader
 
@@ -888,6 +983,8 @@ deploy_update_zip()
 	check_component ${ANDROID_PRODUCT_OUT}/boot.img
 	check_component ${ANDROID_PRODUCT_OUT}/system.img
 	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
+	check_component "${ANDROID_PRODUCT_OUT}/test file"
+	finished_checking_components
 
 	cd ${ANDROID_PRODUCT_OUT}
 	zip ${ROOT}/update.zip boot.img system.img userdata.img android-info.txt
@@ -1319,6 +1416,8 @@ deploy_fastboot()
 		return 0
 	fi
 
+	finished_checking_components
+
 	while true
 	do
 		echo "Waiting for device"
@@ -1562,6 +1661,40 @@ build_add_default()
 	build_add Z  "deploy newer" 		'Deploy files that are newer than system.img and userdata.img by using "adb push"'
 	build_add T  "deploy fastboot" 		'Build, and deploy kernel image on-demand over fastboot'
 	build_add s  "shell"			'Spawn a shell'
+	build_add R  "create_release"		"Create a release binary blob"
+}
+
+find_build_options()
+{
+	local i
+	local match="build "
+	local tmp
+	for ((i=0;i<${#BUILD_OPTION[*]};++i))
+	do
+		tmp=${BUILD_COMMAND[i]}
+		tmp=${tmp:0:${#match}}
+
+		if [ "${tmp}" == "${match}" ]
+		then
+			echo $i
+		fi
+	done
+}
+
+check_remove_build_options()
+{
+	if [ ! -e "${ROOT}/build/envsetup.sh" ]
+	then
+		local opts
+		local I
+		opts=`find_build_options | sort -rn`
+		for I in `echo $opts`
+		do
+			array_delete_index BUILD_OPTION ${I}
+			array_delete_index BUILD_COMMAND ${I}
+			array_delete_index BUILD_HELP ${I}
+		done
+	fi
 }
 
 build_add_default
@@ -1583,6 +1716,7 @@ PATH=${PATH_TO_UBOOT}/tools:${PATH}
 
 setup_android_env
 check_environment
+check_remove_build_options
 choose_options "${@}"
 
 trap generic_error ERR
