@@ -1362,7 +1362,7 @@ build()
 			build_$1 2>&1
 		      ) | tee ${TMP}
 		      [ "${PIPESTATUS[0]}" == "0" ] || false
-		     ) 2>${TIME}
+		     ) 2>${TIME} 3>&1
 		[ ! "$?" == "0" ] && ERR=1
 		echo -en "Finished ${VERB_ACTIVE} ${NAME} - "
 		trap generic_error ERR
@@ -1375,7 +1375,7 @@ build()
 			trap build_error ERR
 			set -E
 			build_$1 &> ${TMP}
-		     ) 2> ${TIME}
+		     ) 2> ${TIME} 3>&1
 		[ ! "$?" == "0" ] && ERR=1
 		trap generic_error ERR
 		set -E
