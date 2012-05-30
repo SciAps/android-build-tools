@@ -1180,6 +1180,11 @@ build_kernel()
 			echo ""
 			make uImage modules -j${JOBS}
 		fi
+		make CROSS_COMPILE=arm-none-linux-gnueabi- modules_install INSTALL_MOD_PATH=${ANDROID_PRODUCT_OUT}/modules
+		echo ""
+		echo "Installing modules included in kernel to rootfs..."
+		echo ""
+		for f in $(find ${ANDROID_PRODUCT_OUT}/modules -type f -name '*.ko'); do cp "$f" ${ANDROID_PRODUCT_OUT}/system/ ; done
 		update_boot_img
 	else
 		make clean -j${JOBS}
