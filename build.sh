@@ -1184,6 +1184,7 @@ build_kernel()
 		echo ""
 		echo "Installing modules included in kernel to rootfs..."
 		echo ""
+		mkdir -p ${ANDROID_PRODUCT_OUT}/root
 		for f in $(find ${ANDROID_PRODUCT_OUT}/modules -type f -name '*.ko'); do cp "$f" ${ANDROID_PRODUCT_OUT}/root/ ; done
 		update_boot_img
 	else
