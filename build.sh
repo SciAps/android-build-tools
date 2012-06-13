@@ -487,7 +487,7 @@ unmount_device()
 
 	choose_removable_device
 
-	MNT_POINTS=`cat /proc/mounts | grep $DEV | awk '{print $2}'`
+	MNT_POINTS=`cat /proc/mounts | grep $DEV | awk '{print $2}' | sed 's/\\\\0/\\\\00/g'`
 	for I in ${MNT_POINTS}
 	do
 		echo -e "Unmounting ${I}"
