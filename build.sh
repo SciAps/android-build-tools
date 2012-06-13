@@ -526,32 +526,32 @@ format_device()
 	then
 		sudo -v
 		echo "Partitioning $DEV."
-		sudo fdisk /dev/$DEV >/dev/null 2>&1 <<EOF
-o
-x
-h
-255
-s
-63
-c
-$NUMCYL
-r
-n
-p
-1
-
-+300M
-t
-c
-a
-1
-n
-p
-2
-
-
-w
-EOF
+		sudo fdisk /dev/$DEV >/dev/null 2>&1 <<-EOF
+			o
+			x
+			h
+			255
+			s
+			63
+			c
+			$NUMCYL
+			r
+			n
+			p
+			1
+			
+			+300M
+			t
+			c
+			a
+			1
+			n
+			p
+			2
+			
+			
+			w
+		EOF
 		# Wait a little bit for devices to appear in /dev
 		sleep 2
 
