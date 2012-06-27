@@ -760,14 +760,10 @@ copy_reflash_nand_sd()
 	# Update x-loader in place if possible.
 	cat ${PATH_TO_XLOADER}/x-load.bin.ift                                 > $1/MLO
 	cp ${LINK} ${PATH_TO_UBOOT}/u-boot-no-environ_bin                       $1/u-boot.bin
-	cp ${LINK} ${PATH_TO_XLOADER}/x-load.bin.ift                            $1/update/MLO
-	cp ${LINK} ${PATH_TO_UBOOT}/u-boot.bin.ift                              $1/update
-	cp ${LINK} ${ANDROID_PRODUCT_OUT}/boot.img                              $1/update/uMulti-Image
-	cp ${LINK} ${ANDROID_PRODUCT_OUT}/system.img                            $1/update
-	cp ${LINK} ${ANDROID_PRODUCT_OUT}/userdata.img                          $1/update
-	cp ${LINK} device/logicpd/${TARGET_PRODUCT}/android.bmp                 $1/update
-	cp ${LINK} device/logicpd/${TARGET_PRODUCT}/android2.bmp                $1/update
-	cp ${LINK} device/logicpd/${TARGET_PRODUCT}/done.bmp                    $1/update
+	cp ${LINK} ${PATH_TO_UBOOT}/u-boot.bin.ift                              $1/
+	cp ${LINK} ${ANDROID_PRODUCT_OUT}/boot.img                              $1/
+	cp ${LINK} ${ANDROID_PRODUCT_OUT}/system.img                            $1/
+	cp ${LINK} ${ANDROID_PRODUCT_OUT}/userdata.img                          $1/
 	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n \
 	        "Logic PD Android SD Boot" -d \
         	device/logicpd/${TARGET_PRODUCT}/reflash_nand.cmd \
@@ -844,7 +840,7 @@ deploy_build_out()
 	LINK=-l copy_reflash_nand_sd build-out/reflash_nand_sd/
 
 	# Copy over to update_cache
-	LINK=-l copy_update_cache build-out/update_cache/
+	#LINK=-l copy_update_cache build-out/update_cache/
 }
 
 deploy_sd_unmount_all_and_check()
