@@ -787,9 +787,9 @@ copy_update_cache()
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/boot.img                              $1/uMulti-Image
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/system.img                            $1
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/userdata.img                          $1
-	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Update Script" \
-		-d build-tools/remote_update_info/updatescr.txt \
-		$1/updatescr.upt > /dev/null 2>&1
+#	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n "Update Script" \
+#		-d device/logicpd/${TARGET_PRODUCT}/updatescr.cmd \
+#		${1}/updatescr.upt > /dev/null 2>&1
 }
 
 ##
@@ -1176,6 +1176,12 @@ build_kernel()
 			echo ""
 			make uImage modules -j${JOBS}
 		fi
+		make CROSS_COMPILE=arm-none-linux-gnueabi- modules_install INSTALL_MOD_PATH=${ANDROID_PRODUCT_OUT}/modules
+		echo ""
+		echo "Installing modules included in kernel to rootfs..."
+		echo ""
+		mkdir -p ${ANDROID_PRODUCT_OUT}/root
+		for f in $(find ${ANDROID_PRODUCT_OUT}/modules -type f -name '*.ko'); do cp "$f" ${ANDROID_PRODUCT_OUT}/root/ ; done
 		update_boot_img
 	else
 		make clean -j${JOBS}
@@ -1230,6 +1236,12 @@ build_sgx_modules()
 
 	# Make sure the output folder exists (the compile requires this!)
 	[ "$CLEAN" == "0" ] && mkdir -p ${ANDROID_PRODUCT_OUT}
+
+	if [ "$SKIP_SGX" == "1" ]
+	then
+		build_info "SKIP_SGX is set - skipping SGX build"
+		return 0
+	fi
 
 	build_sub_module hardware/ti/sgx OMAPES=5.x PLATFORM_VERSION=${PLATFORM_VERSION}
 }
