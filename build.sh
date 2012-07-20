@@ -1182,6 +1182,8 @@ build_kernel()
 		echo ""
 		mkdir -p ${ANDROID_PRODUCT_OUT}/root
 		for f in $(find ${ANDROID_PRODUCT_OUT}/modules -type f -name '*.ko'); do cp "$f" ${ANDROID_PRODUCT_OUT}/root/ ; done
+		mkdir -p ${ANDROID_PRODUCT_OUT}/system/etc
+		cp -a ${ANDROID_PRODUCT_OUT}/modules/lib/firmware ${ANDROID_PRODUCT_OUT}/system/etc
 		update_boot_img
 	else
 		make clean -j${JOBS}
@@ -1279,6 +1281,7 @@ build_images()
 		rm -Rf ${ANDROID_PRODUCT_OUT}/root
 		rm -Rf ${ANDROID_PRODUCT_OUT}/data
 		rm -Rf ${ANDROID_PRODUCT_OUT}/system
+		rm -Rf ${ANDROID_PRODUCT_OUT}/modules
 	else
 		# Do normal Android image creation (including tarball images)
 		make systemimage userdataimage ramdisk systemtarball userdatatarball
