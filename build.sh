@@ -759,7 +759,7 @@ copy_reflash_nand_sd()
 
 	# Update x-loader in place if possible.
 	cat ${PATH_TO_XLOADER}/x-load.bin.ift                                 > $1/MLO
-	cp ${LINK} ${PATH_TO_UBOOT}/u-boot-no-environ_bin                       $1/u-boot.bin
+	cp ${LINK} ${PATH_TO_UBOOT}/u-boot.bin                                  $1/u-boot.bin
 	cp ${LINK} ${PATH_TO_UBOOT}/u-boot.bin.ift                              $1/
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/boot.img                              $1/
 	cp ${LINK} ${ANDROID_PRODUCT_OUT}/system.img                            $1/
