@@ -81,9 +81,12 @@ build_omap3usbload()
 
 # Ensure ordering of new uboot build command.
 build_del i "build images"
+build_del u "build uboot"
+build_del B "deploy build_out"
 build_add u "build uboot_fastboot"
+build_add u "build uboot" "Build U-Boot"
 build_add X "build_omap3usbload"
 build_add X "deploy usb" "Deploy over USB"
 build_add i "build images" "Build (system/userdata/boot).img, and (root/system/userdata).tar.bz2"
-
+build_add B "deploy build_out" "Deploy to build-out folder" 
 build_del k "build wl12xx_modules"
