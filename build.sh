@@ -1660,7 +1660,7 @@ build_add_default()
 {
 	build_add K  "kernel_config"		'Run "make menuconfig" inside the kernel folder.'
 	build_add x  "build xloader" 		"Build X-Loader"
-	build_add u  "build uboot_no_env"
+	build_add u  "build uboot_no_env"	"Build U-Boot (no env)"
 	build_add u  "build uboot" 		"Build U-Boot"
 	build_add k  "build kernel" 		"Build Kernel"
 	build_add a  "build android" 		"Build Android"
