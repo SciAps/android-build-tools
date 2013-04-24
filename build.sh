@@ -988,7 +988,6 @@ deploy_update_zip()
 	check_component ${ANDROID_PRODUCT_OUT}/boot.img
 	check_component ${ANDROID_PRODUCT_OUT}/system.img
 	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
-	check_component "${ANDROID_PRODUCT_OUT}/test file"
 	finished_checking_components
 
 	cd ${ANDROID_PRODUCT_OUT}
