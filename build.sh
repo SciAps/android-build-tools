@@ -1090,7 +1090,7 @@ build_uboot()
 	if [ "$CLEAN" == "0" ]
 	then
 		uboot_check_config
-		make -j${JOBS}
+		make -j${JOBS} SYSCFG_NAND_ECC_IN_CHIP=1
 	else
 		make -j${JOBS} distclean
 		rm -f include/config.mk
