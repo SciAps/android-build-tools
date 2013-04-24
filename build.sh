@@ -1162,6 +1162,7 @@ build_xloader()
 build_kernel()
 {
 	local PATH
+	local MODINST
 
 	cd ${PATH_TO_KERNEL}
 	PATH=${KERNEL_PATH}
@@ -1180,6 +1181,16 @@ build_kernel()
 			echo ""
 			make uImage modules -j${JOBS}
 		fi
+
+		# Install modules and firmware.
+		mktemp_env MODINST -d
+
+		mkdir -p ${ANDROID_PRODUCT_OUT}/system/lib/modules
+		mkdir -p ${ANDROID_PRODUCT_OUT}/system/etc/firmware
+		make modules_install INSTALL_MOD_PATH=${MODINST}
+		find ${MODINST}/lib/modules -name '*.ko' -exec cp '{}' ${ANDROID_PRODUCT_OUT}/system/lib/modules ';'
+		cp -a ${MODINST}/lib/firmware ${ANDROID_PRODUCT_OUT}/system/etc
+
 		update_boot_img
 	else
 		make clean -j${JOBS}
