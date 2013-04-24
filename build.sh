@@ -90,7 +90,12 @@ mktemp_env_cleanup()
 mktemp_env()
 {
 	# Ensure the cleanup function is trapped.
-	trap mktemp_env_cleanup EXIT
+	if trap | grep mktemp_env_cleanup
+	then
+		unset TMP_FILES
+		set | grep TMP_FILES
+		trap mktemp_env_cleanup EXIT
+	fi
 	local MKTEMP_OUT
 	MKTEMP_OUT=`mktemp ${*:2}`
 	TMP_FILES[${#TMP_FILES[*]}]="${MKTEMP_OUT}"
