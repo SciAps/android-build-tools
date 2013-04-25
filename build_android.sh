@@ -680,7 +680,7 @@ build_tarball()
 	    success=$?
 	    [ $success -eq 0 ] || rm -f ${target_tarball}
 	    rm -f ${target_tar}
-	    popd 2>&1
+	    popd >/dev/null 2>&1
 	    return $success
 	fi
 
