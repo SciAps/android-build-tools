@@ -739,6 +739,10 @@ build_images()
 ##
 build_fastboot()
 {
+	# Cause the device to reboot into the bootloader
+	adb reboot bootloader || echo Not instructing device to reboot
+	
+	# Upload the appropriate images
 	if [ "$1" == "all" ]
 	then
 		fastboot flash boot
@@ -750,6 +754,33 @@ build_fastboot()
 	fi
 }
 
+##
+# build_uboot_fastboot
+#
+# Compiles u-boot with the environment setting CMDLINE_FLAGS=-DFORCED_ENVIRONMENT
+# to build a u-boot with the environment variables in u-boot not being stored
+# in NAND, but defaults only.  Needs a modified u-boot build environment.
+#
+# (Useful for when one wants to make a NAND update card not pay attention
+# to the existing NAND environment)
+##
+build_uboot_fastboot()
+{
+	local CLEAN
+
+	if [ "${CLEAN}" == "1" ]
+	then
+		rm -f build-out/u-boot-fastboot-only
+        else
+		if [ ! -e ${PATH_TO_UBOOT}/u-boot-fastboot-only ]
+		then
+			CLEAN=1 build_uboot
+			CLEAN=0 CMDLINE_FLAGS="-DFORCED_ENVIRONMENT -DFASTBOOT_ONLY" build_uboot
+			cp ${PATH_TO_UBOOT}/u-boot.bin ${PATH_TO_UBOOT}/u-boot-fastboot-only
+			CLEAN=1 build_uboot
+		fi
+	fi
+}
 
 ##
 # deploy_fastboot
@@ -783,6 +814,78 @@ deploy_fastboot()
 		fastboot boot ${ANDROID_PRODUCT_OUT}/boot.img
 		sleep 10
 	done
+}
+
+##
+# build_omap3usbload
+#
+# Builds the tool required for booting over USB.  Useful for release
+# folders.
+##
+build_omap3usbload()
+{
+	if [ ! -f "x-loader/scripts/omap3_usbload" ]
+	then
+		gcc -o x-loader/scripts/omap3_usbload x-loader/scripts/omap3_usbload.c -lusb
+	fi
+}
+
+##
+# deploy_usb
+#
+# Pushes all pertinent files over USB for running out of NAND
+##
+deploy_usb()
+{
+	check_component x-loader/x-load.bin
+	check_component x-loader/x-load.bin.ift
+	check_component u-boot/u-boot.bin.ift
+	check_component u-boot/u-boot-fastboot-only
+	check_component ${ANDROID_PRODUCT_OUT}/boot.img
+	check_component ${ANDROID_PRODUCT_OUT}/system.img
+	check_component ${ANDROID_PRODUCT_OUT}/userdata.img
+	check_component x-loader/scripts/omap3_usbload.c
+	finished_checking_components
+
+	cd ${ROOT}
+
+	echo "Turn off devkit; ensure USB OTG cable is plugged in"
+	echo "Turn on the devkit to start the update process."
+
+	echo Waiting for devkit turn-on
+	x-loader/scripts/omap3_usbload -f x-loader/x-load_usb.bin \
+		-a 0x80400000 -f u-boot/u-boot-fastboot-only      \
+		-j 0x80400000 > /dev/null
+
+	# Flash everything, then finish by "continuing"
+	echo -n Flashing...
+	
+	echo -n x-loader...
+	fastboot flash x-loader x-loader/x-load.bin.ift > /dev/null 2>&1
+
+	echo -n u-boot...
+	(fastboot flash u-boot u-boot/u-boot.bin.ift
+	fastboot erase u-boot-env) > /dev/null 2>&1
+
+	echo -n kernel...
+	fastboot flash boot > /dev/null 2>&1
+
+	echo -n system...
+	fastboot flash system > /dev/null 2>&1
+
+	echo -n userdata...
+	(fastboot flash userdata
+	fastboot erase cache) > /dev/null 2>&1
+	
+	echo -en "\nSetting up environment to boot from NAND\n"
+	(fastboot oem env default -f
+	fastboot oem setenv kernel_location nand
+	fastboot oem setenv preboot
+	fastboot oem setenv bootdelay 1
+	fastboot oem saveenv) > /dev/null 2>&1
+	
+	echo -en "Rebooting"
+	fastboot reboot > /dev/null 2>&1
 }
 
 ##
@@ -824,11 +927,12 @@ setup_default_environment()
 	PATH_TO_XLOADER=${ROOT}/x-loader
 
 	export ARCH=arm
-	export CROSS_COMPILE=arm-eabi-
+	export CROSS_COMPILE=arm-none-linux-gnueabi-
 
-	BOOTLOADER_PATH=${ROOT}/prebuilt/linux-x86/toolchain/arm-eabi-4.4.0/bin:${PATH}
-	KERNEL_PATH=${ROOT}/prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin:${PATH}
 	ORIG_PATH=${PATH}
+
+	KERNEL_PATH=${PATH}:${ROOT}/codesourcery/arm-2009q1-203/bin
+	BOOTLOADER_PATH=${KERNEL_PATH}
 
 	export PATH=${BOOTLOADER_PATH}
 	
@@ -904,15 +1008,11 @@ UBOOT_BOARD=logic
 UBOOT_VENDOR=ti
 UBOOT_SOC=omap3
 
-# Override default build scripting to use code sourcery toolchain.
-KERNEL_PATH=${PATH}:${ROOT}/codesourcery/arm-2009q1-203/bin
-BOOTLOADER_PATH=${KERNEL_PATH}
-CROSS_COMPILE=arm-none-linux-gnueabi-
-
 # Add all of our build targets.
 build_add K  "kernel_config"		'Run "make menuconfig" inside the kernel folder.'
 build_add x  "build xloader" 		"Build X-Loader"
 build_add u  "build uboot_no_env"
+build_add u  "build uboot_fastboot"
 build_add u  "build uboot" 		"Build U-Boot"
 build_add k  "build kernel" 		"Build Kernel"
 build_add a  "build android" 		"Build Android"
@@ -928,12 +1028,16 @@ build_add Z  "deploy newer" 		'Deploy files that are newer than system.img and u
 build_add T  "deploy fastboot" 		'Build, and deploy kernel image on-demand over fastboot'
 build_add s  "shell"			'Spawn a shell'
 build_add R  "create_release"		"Create a release binary blob"
+build_add X  "build_omap3usbload"
+build_add X  "deploy usb"		"Deploy over USB"
 
 # Amend paths to have uboot tools in them.
 BOOTLOADER_PATH=${PATH_TO_UBOOT}/tools:${BOOTLOADER_PATH}
 KERNEL_PATH=${PATH_TO_UBOOT}/tools:${KERNEL_PATH}
 ORIG_PATH=${PATH_TO_UBOOT}/tools:${ORIG_PATH}
 PATH=${PATH_TO_UBOOT}/tools:${PATH}
+
+# Override default build scripting to use code sourcery toolchain.
 
 if [ -e "${HOME}/.logicpd/android_build" ]
 then

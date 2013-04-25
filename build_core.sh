@@ -863,11 +863,6 @@ find_build_options()
 DISTRIB_ID=`lsb_release -i | sed 's/^[^:]*:[[:blank:]]*//'`
 DISTRIB_RELEASE=`lsb_release -r | sed 's/^[^:]*:[[:blank:]]*//'`
 
-SELF=`which -- $0`
-
-# Normalize the path to the folder build.sh is located in.
-cd $(readlink -f $(dirname $(which -- $SELF)))
-
 BUILD_TARGETS=
 
 # Setup some environment variables.

@@ -15,6 +15,11 @@ then
 	return
 fi
 
+SELF=`which -- $0`
+
+# Normalize the path to the folder build.sh is located in.
+cd $(readlink -f $(dirname $(which -- $SELF)))
+
 source build-tools/build_core.sh
 
 # Source additional build scripts
