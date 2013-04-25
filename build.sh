@@ -1260,6 +1260,86 @@ build_wl12xx_modules()
 }
 
 ##
+# build_tarball <out.tar.{gz,bz2}> <folders>
+#
+# Creates a tarball, based on mktarball.sh, and it is safe for creating
+# a tarball for the root filesystem as well (it has some local
+# modifications)
+##
+build_tarball()
+{
+	local success
+	local fs_get_stats
+	local start_dir
+	local dir_to_tar
+	local target_tar
+	local target_tarball
+
+	mktemp_env target_tar
+	target_tarball=$1
+
+	echo "Creating tarball `basename ${target_tarball}`"
+
+	rm ${target_tar} > /dev/null 2>&1
+	pushd ${ANDROID_PRODUCT_OUT} >/dev/null 2>&1
+
+	# Process all the partitions we're to integrate into the tarball
+	for I in ${*:2}
+	do
+		dir_to_tar=$I
+		fs_get_stats=${ROOT}/out/host/linux-x86/bin/fs_get_stats
+
+		cd ${ANDROID_PRODUCT_OUT}
+		
+		echo "--> Adding partition ${dir_to_tar}"
+
+		# do dirs first
+		if [ "${dir_to_tar}" == "root" ]
+		then
+			subdirs=`find ${dir_to_tar} -type d -printf '%P\n'`
+			files=`find ${dir_to_tar} \! -type d -printf '%P\n'`
+
+			cd ${dir_to_tar}
+		else
+			subdirs=`find ${dir_to_tar} -type d -print`
+			files=`find ${dir_to_tar} \! -type d -print`
+		fi
+
+		for f in ${subdirs} ${files} ; do
+		    curr_perms=`stat -c 0%a $f`
+		    [ -d "$f" ] && is_dir=1 || is_dir=0
+		    new_info=`${fs_get_stats} ${curr_perms} ${is_dir} ${f}`
+		    new_uid=`echo ${new_info} | awk '{print $1;}'`
+		    new_gid=`echo ${new_info} | awk '{print $2;}'`
+		    new_perms=`echo ${new_info} | awk '{print $3;}'`
+
+		    tar --no-recursion --numeric-owner --owner $new_uid \
+			--group $new_gid --mode $new_perms -p -rf ${target_tar} ${f}
+		done
+	done
+
+	if [ $? -eq 0 ] ; then
+	    case "${target_tarball}" in
+	    *.bz2 )
+		bzip2 -c ${target_tar} > ${target_tarball}
+		;;
+	    *.gz )
+		gzip -c ${target_tar} > ${target_tarball}
+		;;
+	    esac
+	    success=$?
+	    [ $success -eq 0 ] || rm -f ${target_tarball}
+	    rm -f ${target_tar}
+	    popd 2>&1
+	    return $success
+	fi
+
+	rm -f ${target_tar}
+	popd >/dev/null 2>&1
+	return 1
+}
+
+##
 # build_images
 #
 # Ensures the Android images are in a sane state; i.e. by wiping
@@ -1287,9 +1367,10 @@ build_images()
 		make systemimage userdataimage ramdisk systemtarball userdatatarball
 
 		# Create root.tar.bz2
-		cd ${ANDROID_PRODUCT_OUT}
-		../../../../build/tools/mktarball.sh ../../../host/linux-x86/bin/fs_get_stats root . root.tar root.tar.bz2
-		cd ${ROOT}
+		build_tarball ${ANDROID_PRODUCT_OUT}/root.tar.bz2 root
+
+		# Create fs.tar.bz2 (root + data + system)
+		build_tarball ${ANDROID_PRODUCT_OUT}/fs.tar.bz2 root system data
 
 		# Create boot.img
 		update_boot_img
