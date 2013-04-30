@@ -596,6 +596,12 @@ build_sgx_modules()
 	# Make sure the output folder exists (the compile requires this!)
 	[ "$CLEAN" == "0" ] && mkdir -p ${ANDROID_PRODUCT_OUT}
 
+	if [ "$SKIP_SGX" == "1" ]
+	then
+		build_info "SKIP_SGX is set - skipping SGX build"
+		return 0
+	fi
+
 	build_sub_module hardware/ti/sgx OMAPES=5.x PLATFORM_VERSION=${PLATFORM_VERSION}
 }
 
